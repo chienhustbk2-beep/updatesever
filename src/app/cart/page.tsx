@@ -1,0 +1,51 @@
+'use client';import { useState, useEffect, startTransition } from 'react';import { useRouter } from 'next/navigation';import { useTheme } from '@/components/ThemeProvider';import { useCartStore } from '@/store/useCartStore';import { useSession } from 'next-auth/react';import { ShoppingCart, Loader2, CheckCircle, XCircle, PiggyBank, ArrowRight, Landmark, Smartphone, Heart, Clock } from 'lucide-react';import OrderItemsList, { OrderItemDisplay } from '@/components/ui/OrderItemsList'
+export default function CartPage() {  const router = useRouter();
+  const { data: session, status } = useSession();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true) }, []);
+  useEffect(() => { if (status === 'unauthenticated') { router.push('/login') } }, [status, router]);
+  const cartItems = useCartStore((state) => state.cartItems);
+  const removeFromCart = useCartStore((state) => state.removeFromCart);
+  const updateQuantity = useCartStore((state) => state.updateQuantity);
+  const clearCart = useCartStore((state) => state.clearCart);
+  const syncToServer = useCartStore((state) => state.syncToServer);
+  const [loading, setLoading] = useState(false);
+  const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [checkoutMessage, setCheckoutMessage] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [coupon, setCoupon] = useState<{ code: string; discount: number; type: string } | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState('');
+  const [userBalance, setUserBalance] = useState<number | null>(null);
+  const [balanceError, setBalanceError] = useState(false);
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set()); const handleClearCart = () => { clearCart(); router.push('/') };
+  const [showVoucherSection, setShowVoucherSection] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const syncCartToServer = async () => {
+    if (useCartStore.getState().cartItems.length === 0) { setIsSyncing(false); return; }
+    try { await useCartStore.getState().syncToServer(); } catch { console.error('Failed to sync cart') } finally { setIsSyncing(false) } }
+const fetchUserBalance = async () => {    try {      const res = await fetch('/api/user/profile');
+      if (res.ok) {        const data = await res.json();setUserBalance(data.user?.balance || 0);      } else {        setBalanceError(true)      }
+    } catch (_err) {      console.error('Failed to fetch balance');setBalanceError(true);    };  };  useEffect(() => {    startTransition(() => {      fetchUserBalance();syncCartToServer()    })  }, []);
+  const handleApplyCoupon = async () => {    if (!couponCode.trim()) return;
+    setCouponLoading(true);setCouponError('');
+    try {      const res = await fetch('/api/coupon/validate', {        method: 'POST',        headers: { 'Content-Type': 'application/json' },        body: JSON.stringify({ code: couponCode.trim(), total: selectedTotalPrice }),      });
+      const data = await res.json();
+      if (res.ok) {        setCoupon(data.coupon);setCouponError('')      } else {        setCouponError(data.error || 'Mã coupon không hợp lệ');setCoupon(null)      }
+    } catch (_err) {      setCouponError('Không thể kết nối đến máy chủ')    } finally {      setCouponLoading(false)    }  }
+const toggleSelectItem = (productId: string) => {    setSelectedItems((prev) => {      const next = new Set(prev);
+      if (next.has(productId)) {        next.delete(productId)      } else {        next.add(productId)      }
+      return next    })  }
+const toggleSelectAll = () => {    if (selectedItems.size === cartItems.length) {      setSelectedItems(new Set())    } else {      setSelectedItems(new Set(cartItems.map((item) => item.productId)))    }  }
+const removeSelectedItems = () => {    selectedItems.forEach((id) => removeFromCart(id));setSelectedItems(new Set())  }
+const selectedItemsList = cartItems.filter((item) => selectedItems.has(item.productId));
+  const selectedTotalPrice = selectedItemsList.reduce((sum, item) => {    const price = item.salePrice ?? item.price; const applicableDiscount = item.bulkDiscounts      ?.filter(d => d.minQty <= item.quantity)      .sort((a, b) => b.minQty - a.minQty)[0];
+    const discountPercent = applicableDiscount?.discount ?? 0; const discountedPrice = discountPercent > 0 ? price * (1 - discountPercent / 100) : price; return sum + discountedPrice * item.quantity  }, 0);
+  const selectedTotalItems = selectedItemsList.reduce((sum, item) => sum + item.quantity, 0);
+  const discountAmount = coupon    ? coupon.type === 'PERCENTAGE'      ? Math.round((selectedTotalPrice * coupon.discount) / 100)      : coupon.discount    : 0; const finalPrice = selectedTotalPrice - discountAmount; const handleCheckout = async () => {    if (selectedItems.size === 0) return;    router.push('/checkout');  }
+const orderItemsDisplay: OrderItemDisplay[] = cartItems.map((item) => ({    id: item.productId,    productId: item.productId,    name: item.name,    price: item.price,    salePrice: item.salePrice,    image: item.image,    quantity: item.quantity,    total: (item.salePrice ?? item.price) * item.quantity,    bulkDiscounts: item.bulkDiscounts,  }));
+if (!mounted) {    return (      <div className="flex min-h-[60vh] items-center justify-center">        <Loader2 className="h-8 w-8 animate-spin text-divine-blue" />      </div>    )  }  if (cartItems.length === 0) {    return (      <div className="min-h-[60vh] bg-[var(--background)]">        <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">          <div className="flex flex-col items-center justify-center rounded-xl card-gradient border border-divider py-20">            <ShoppingCart className="h-20 w-20 text-muted" />            <h2 className="mt-6 text-xl font-medium text-muted">              Giỏ hàng của bạn còn trống            </h2>            <p className="mt-2 text-sm text-muted">              Hãy thêm sản phẩm vào giỏ hàng để mua sắm            </p>            <button              onClick={() => router.push('/products')}              className="mt-6 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 px-8 py-3 text-sm font-medium !text-white hover:from-blue-600 hover:to-indigo-700 hover:shadow-lg transition-all"            >              Tiếp tục mua sắm            </button>          </div>        </div>      </div>    )  };
+  return (    <div className="min-h-[calc(100vh-64px)] bg-[var(--background)] pb-28">      <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6 lg:px-8">        <div className="mb-4 flex items-center gap-2 text-sm text-muted">          <span>Giỏ hàng</span>          <span className="text-muted">&gt;</span>          <span className="text-divine-blue">Sản phẩm trong giỏ</span>        </div>        {isSyncing && (          <div className="mb-4 flex items-center gap-2 rounded-lg border border-divider card-gradient px-4 py-3 text-sm text-muted">            <Loader2 className="h-4 w-4 animate-spin" />            Đang đồng bộ giỏ hàng...          </div>        )}        <div className="hidden sm:grid sm:grid-cols-12 gap-4 rounded-lg card-gradient border border-divider px-5 py-3 text-sm text-muted mb-2">          <div className="col-span-5">Sản phẩm</div>          <div className="col-span-2 text-center">Đơn giá</div>          <div className="col-span-2 text-center">Số lượng</div>          <div className="col-span-2 text-center">Số tiền</div>          <div className="col-span-1 text-center">Thao tác</div>        </div>        <OrderItemsList          items={orderItemsDisplay}          mode="cart"          selectable={true}          selectedItems={selectedItems}          onToggleSelect={toggleSelectItem}          onToggleSelectAll={toggleSelectAll}          onUpdateQuantity={updateQuantity}          onRemoveItem={removeFromCart}          onRemoveSelectedItems={removeSelectedItems}          couponCode={couponCode}          setCouponCode={setCouponCode}          coupon={coupon}          setCoupon={setCoupon}          onApplyCoupon={handleApplyCoupon}          couponLoading={couponLoading}          couponError={couponError}          showVoucherSection={showVoucherSection}          setShowVoucherSection={setShowVoucherSection}          cartItemsCount={cartItems.length}          isDarkTheme={isDark}        />        {/* Bottom Actions */}        <div className="mt-6 rounded-2xl border border-divider card-gradient p-6">          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">            <div>              <p className="text-sm text-muted">Tổng thanh toán</p>              <p className="text-2xl font-bold text-[var(--warning)]">{finalPrice.toLocaleString('vi-VN')}đ</p>              {discountAmount > 0 && (                <p className="text-xs text-muted">Giảm {discountAmount.toLocaleString('vi-VN')}đ</p>              )}            </div>            <div className="flex gap-3">              <button                               className="rounded-xl border border-divider px-6 py-3 text-sm font-medium text-red-500 hover:text-red-400 transition hover:bg-card" onClick={handleClearCart}             >                Xóa hết              </button>              <button                onClick={() => router.push('/products')}                className="rounded-xl border border-divider px-6 py-3 text-sm font-medium text-muted transition hover:bg-card"              >                Mua thêm              </button>              <button                onClick={handleCheckout}                disabled={loading || selectedItems.size === 0}                className="rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 px-8 py-3 text-sm font-semibold !text-white hover:from-blue-600 hover:to-indigo-700 hover:shadow-lg transition-all disabled:opacity-50"              >                {loading ? (                  <Loader2 className="h-5 w-5 animate-spin" />                ) : (                  'Thanh toán'                )}              </button>            </div>          </div>        </div>      </div>    </div>  )}

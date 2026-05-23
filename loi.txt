@@ -1,0 +1,70 @@
+========================================================================
+BẢN CHẨN ĐOÁN LỖI HỆ THỐNG CHUYÊN SÂU & HƯỚNG KHẮC PHỤC (DATABASE & LOGIC)
+========================================================================
+
+--- NHÓM 1: LỖ HỔNG LOGIC "MẤT TIỀN" (FATAL BUSINESS FLAWS) ---
+
+1. Lỗ hổng "Hoàn tiền & Tái sử dụng Key" (Refund Exploit)
+- Vấn đề: Khi hủy đơn hàng, Key tự động quay về trạng thái AVAILABLE. Khách có thể lưu Key lại, bấm hoàn tiền, rồi shop lại bán Key đã lộ cho người khác.
+- Hướng khắc phục: Key của đơn đã Hủy/Hoàn tiền tuyệt đối không được quay về AVAILABLE. Phải tạo trạng thái COMPROMISED (Đã bị lộ). Chỉ Admin mới được mở khóa thủ công.
+
+2. Lỗ hổng "Nạp tiền cực hình" (CUID Bank Transfer)
+- Vấn đề: Webhook SePay đang yêu cầu cú pháp nạp tiền là `NAP [userId]`. Tuy nhiên userId là một chuỗi dài loằng ngoằng (ví dụ: clq5j9...). Khách gõ tay chuyển khoản chắc chắn sai.
+- Hướng khắc phục: Bảng User thêm 1 trường `accountCode` (số nguyên ngẫu nhiên 6 chữ số). Đổi cú pháp nạp tiền thành: `NAP 183942`.
+
+3. Lỗ hổng "Bào" Mã Giảm Giá (Coupon Abuse)
+- Vấn đề: Hệ thống không lưu vết người dùng nào đã dùng mã giảm giá nào. 1 khách có thể xài 1 mã (dù quy định 1 lần/người) để mua 100 lần.
+- Hướng khắc phục: Tạo bảng trung gian `UserCoupon` (userId, couponId, usedAt) để kiểm tra và khóa những user cố tình lạm dụng.
+
+--- NHÓM 2: LỖ HỔNG CẤU TRÚC DATABASE (DATA INTEGRITY) ---
+
+4. Bảng Giao dịch (Transaction) "Cụt chân"
+- Vấn đề: Bảng Transaction chỉ ghi số tiền, không ghi loại giao dịch. Nếu khách mua hàng bằng số dư ví, đối soát kế toán sẽ loạn.
+- Hướng khắc phục: Thêm trường `type` (Enum: DEPOSIT, PAYMENT, REFUND) vào bảng Transaction. Khách mua hàng bằng ví phải sinh ra 1 record PAYMENT.
+
+5. Liên kết Key và Đơn hàng bị lỏng
+- Vấn đề: ProductKey nối thẳng với Order. Nếu đơn có nhiều loại sản phẩm, hệ thống khó phân biệt Key nào của sản phẩm nào.
+- Hướng khắc phục: Đổi liên kết của ProductKey từ Order sang bảng OrderItem (Chi tiết đơn hàng).
+
+6. Ép đăng nhập (No Guest Checkout)
+- Vấn đề: Bảng Order bắt buộc có userId. Khách vãng lai muốn mua nhanh qua MoMo/ZaloPay bị ép đăng ký tài khoản -> rớt đơn.
+- Hướng khắc phục: Cho phép trường `userId` trong Order có thể để trống (Nullable/Optional). Giao hàng qua Email.
+
+--- NHÓM 3: LỖ HỔNG KIẾN TRÚC & TRIỂN KHAI (ARCHITECTURE) ---
+
+7. "Bom nổ chậm" SQLite & Vercel
+- Vấn đề: Database đang dùng SQLite (lưu file cục bộ dev.db). Đưa lên Vercel chạy Serverless sẽ bị mất dữ liệu liên tục sau mỗi lần restart.
+- Hướng khắc phục: Chuyển đổi provider trong Prisma từ 'sqlite' sang 'postgresql' hoặc 'mysql'.
+
+8. Bán trùng Key (Race Condition)
+- Vấn đề: Không có cơ chế khóa (Lock). 2 khách cùng mua 1 Key cuối cùng trong kho cùng lúc sẽ dẫn đến việc 1 Key bán cho 2 người.
+- Hướng khắc phục: Hàm query lấy Key phải được bao bọc trong Prisma Transaction với cơ chế kiểm tra kỹ (Double-check) tồn kho trước khi update.
+
+9. Rác Dữ liệu (DB Bloat) từ VisitLogs
+- Vấn đề: Lưu log truy cập vào Database chính sẽ làm phình DB cực nhanh.
+- Hướng khắc phục: Thêm logic tự động xóa các VisitLog cũ hơn 30 ngày (Cronjob hoặc Trigger).
+
+========================================================================
+CÂU LỆNH TỐI THƯỢNG (MASTER PROMPT) COPY CHO CLAUDE CODE
+========================================================================
+
+Đóng vai trò là Senior System Architect, tôi đã rà soát lại tài liệu hệ thống và phát hiện nhiều lỗ hổng nghiêm trọng về Logic MMO và Database Schema. Hãy thực hiện một cuộc 'Đại phẫu thuật' (Major Refactor) theo đúng các yêu cầu cực kỳ khắt khe sau đây:
+
+PHASE 1: SỬA LỖI DATABASE SCHEMA & MIGRATION
+1. Bảng Transaction: Thêm trường `type` (Enum: DEPOSIT, PAYMENT, REFUND). Mọi giao dịch dùng BALANCE để thanh toán đơn hàng phải sinh ra record PAYMENT.
+2. Bảng ProductKey: Xóa quan hệ với Order, thay bằng quan hệ bắt buộc với OrderItem.
+3. Bảng Order: Sửa trường `userId` thành Optional (Nullable) để hỗ trợ Khách vãng lai (Guest Checkout).
+4. Bảng User: Thêm trường `accountCode` (String, tự sinh ngẫu nhiên 6 chữ số khi tạo user). Cập nhật API SePay Webhook để quét nạp tiền theo cú pháp `NAP [accountCode]` thay vì CUID dài dòng.
+5. Bảng Coupon: Tạo thêm model `UserCoupon` (userId, couponId, usedAt) để tracking, ngăn chặn 1 user dùng 1 mã giảm giá nhiều lần.
+6. Bảng TicketMessage: Thêm trường `attachments` (String nullable) lưu JSON array URL ảnh màn hình khách gửi.
+
+PHASE 2: VÁ LỖ HỔNG LOGIC NGHIỆP VỤ (MMO CORE LOGIC)
+1. Lỗi Hoàn tiền/Resell Exploit: Trong API Cancel Order, các ProductKey đã gán KHÔNG ĐƯỢC trở về trạng thái AVAILABLE. Phải cập nhật chúng thành COMPROMISED (Bị lộ) để chờ Admin xử lý.
+2. Lỗi Bán Trùng Key (Race Condition): Cập nhật logic Auto-delivery trong Checkout và Order Patch API. Khi Query Key AVAILABLE, phải xử lý trong Prisma Transaction với thứ tự an toàn, đảm bảo nếu 2 request đến cùng lúc không bị cấp trùng 1 Key cho 2 user.
+3. Dọn rác DB: Trong VisitLog, thêm logic tự động xóa (cron job/middleware) các bản ghi cũ hơn 30 ngày để chống phình DB.
+4. Fake Reviews: Sửa API Review, chỉ cho phép User được tạo Review khi họ đã thực sự có Order chứa Product đó và status = COMPLETED.
+
+PHASE 3: ĐỊNH HƯỚNG TRIỂN KHAI
+Sẵn sàng kịch bản thay đổi provider của Prisma từ sqlite sang postgresql (hoặc MySQL) vì dự án dùng Next.js sẽ deploy lên Vercel/Serverless không tương thích với SQLite file vật lý.
+
+LƯU Ý: Đừng dùng công cụ Replace cục bộ vì sẽ gây lỗi. Hãy đọc kỹ các file liên quan và rewrite lại cho chuẩn xác. Bắt đầu từ Phase 1 (schema.prisma) trước, làm xong Phase nào báo cáo Phase đó!

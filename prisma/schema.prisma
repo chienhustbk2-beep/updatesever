@@ -1,0 +1,382 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  // For production deployment (Vercel/Serverless), switch to:
+  // provider = "postgresql"
+  // And set DATABASE_URL in your environment variables:
+  // DATABASE_URL="postgresql://user:password@host:5432/dbname"
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  passwordHash   String
+  name           String?
+  avatar         String?
+  phone          String?
+  accountCode    String?         @unique
+  balance        Float           @default(0)
+  role           Role            @default(CUSTOMER)
+  isActive       Boolean         @default(true)
+  lastSeen       DateTime        @default(now())
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  downloads      Download[]
+  orders         Order[]
+  reviews        Review[]
+  supportTickets SupportTicket[]
+  transactions   Transaction[]
+  auditLogs      AuditLog[]
+  userCoupons    UserCoupon[]
+
+  @@map("users")
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  slug        String     @unique
+  description String?
+  icon        String?
+  parentId    String?
+  createdAt   DateTime   @default(now())
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  name        String
+  slug        String        @unique
+  description String?
+  shortDesc   String?
+  guide       String?
+  price       Float
+  salePrice   Float?
+  stock       Int           @default(0)
+  sku         String?       @unique
+  type        ProductType   @default(SOFTWARE_KEY)
+  status      ProductStatus @default(ACTIVE)
+  images      String
+  categoryId  String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  orderItems  OrderItem[]
+  productKeys ProductKey[]
+  category    Category?     @relation(fields: [categoryId], references: [id])
+  reviews     Review[]
+  bulkDiscounts BulkDiscount[]
+
+  @@map("products")
+}
+
+model BulkDiscount {
+  id        String  @id @default(cuid())
+  productId String
+  minQty    Int
+  discount  Float
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, minQty])
+  @@map("bulk_discounts")
+}
+
+model ProductKey {
+  id          String    @id @default(cuid())
+  productId   String
+  keyValue    String    @unique
+  status      KeyStatus @default(AVAILABLE)
+  orderItemId String?
+  note        String?
+  soldAt      DateTime?
+  createdAt   DateTime  @default(now())
+  orderItem   OrderItem? @relation(fields: [orderItemId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@map("product_keys")
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  orderNumber     String        @unique
+  userId          String?
+  totalAmount     Float
+  discountAmount  Float         @default(0)
+  finalAmount     Float
+  status          OrderStatus   @default(PENDING)
+  paymentMethod   PaymentMethod @default(BANK_TRANSFER)
+  paymentStatus   PaymentStatus @default(UNPAID)
+  transactionCode String?
+  customerEmail   String
+  customerName    String
+  customerPhone   String?
+  note            String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  downloads       Download[]
+  items           OrderItem[]
+  user            User?         @relation(fields: [userId], references: [id])
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String       @id @default(cuid())
+  orderId     String
+  productId   String
+  quantity    Int          @default(1)
+  price       Float
+  total       Float
+  product     Product      @relation(fields: [productId], references: [id])
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productKeys ProductKey[]
+
+  @@map("order_items")
+}
+
+model Download {
+  id            String    @id @default(cuid())
+  orderId       String
+  userId        String
+  productKey    String?
+  downloadUrl   String?
+  expiresAt     DateTime?
+  downloadCount Int       @default(0)
+  maxDownloads  Int       @default(5)
+  createdAt     DateTime  @default(now())
+  user          User      @relation(fields: [userId], references: [id])
+  order         Order     @relation(fields: [orderId], references: [id])
+
+  @@map("downloads")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, productId])
+  @@map("reviews")
+}
+
+model SupportTicket {
+  id        String          @id @default(cuid())
+  userId    String
+  subject   String
+  message   String
+  status    TicketStatus    @default(OPEN)
+  orderId   String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  user      User            @relation(fields: [userId], references: [id])
+  messages  TicketMessage[]
+
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id          String        @id @default(cuid())
+  ticketId    String
+  content     String
+  isStaff     Boolean       @default(false)
+  attachments String?
+  createdAt   DateTime      @default(now())
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_messages")
+}
+
+model Coupon {
+  id             String     @id @default(cuid())
+  code           String     @unique
+  description    String?
+  type           CouponType @default(PERCENTAGE)
+  value          Float
+  maxUses        Int?
+  usedCount      Int        @default(0)
+  minOrderAmount Float?
+  validFrom      DateTime
+  validUntil     DateTime
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  userCoupons    UserCoupon[]
+
+  @@map("coupons")
+}
+
+model UserCoupon {
+  id        String   @id @default(cuid())
+  userId    String
+  couponId  String
+  usedAt    DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  coupon    Coupon   @relation(fields: [couponId], references: [id])
+
+  @@unique([userId, couponId])
+  @@map("user_coupons")
+}
+
+model Transaction {
+  id          String            @id @default(cuid())
+  userId      String
+  type        TransactionType   @default(DEPOSIT)
+  amount      Float
+  description String?
+  status      TransactionStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+  user        User              @relation(fields: [userId], references: [id])
+
+  @@map("transactions")
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+  STAFF
+}
+
+enum ProductType {
+  SOFTWARE_KEY
+  DIGITAL_ACCOUNT
+  SOFTWARE_TOOL
+  LICENSE_KEY
+  SUBSCRIPTION
+}
+
+enum ProductStatus {
+  ACTIVE
+  DRAFT
+  OUT_OF_STOCK
+  HIDDEN
+}
+
+enum KeyStatus {
+  AVAILABLE
+  SOLD
+  RESERVED
+  EXPIRED
+  ERROR
+  COMPROMISED
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  MOMO
+  ZALOPAY
+  CRYPTO
+  BALANCE
+  MANUAL
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum TransactionType {
+  DEPOSIT
+  PAYMENT
+  REFUND
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String
+  entity      String
+  entityId    String?
+  details     String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model SystemSettings {
+  id          String @id @default(cuid())
+  key         String @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model UIElement {
+  id          String    @id @default(cuid())
+  name        String
+  key         String    @unique
+  section     String
+  isVisible   Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  position    String    @default("default")
+  customText  String?
+  customColor String?
+  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
+
+  @@map("ui_elements")
+}
+
+model ActiveSession {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  ip        String?
+  userAgent String?
+  lastSeen  DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@map("active_sessions")
+}
+
+model VisitLog {
+  id        String   @id @default(cuid())
+  sessionId String
+  ip        String?
+  userAgent String?
+  path      String
+  createdAt DateTime @default(now())
+
+  @@map("visit_logs")
+}

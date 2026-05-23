@@ -1,0 +1,279 @@
+Folder PATH listing for volume New Volume
+Volume serial number is 00000074 DAB1:93A4
+C:\USERS\CHIEN HUST\ECOMMERCE-DIGITAL\SRC
+|   auth.ts
+|   
++---app
+|   |   favicon.ico
+|   |   globals.css
+|   |   layout.tsx
+|   |   page.tsx
+|   |   
+|   +---admin
+|   |   |   layout.tsx
+|   |   |   page.tsx
+|   |   |   
+|   |   +---audit-logs
+|   |   |       page.tsx
+|   |   |       
+|   |   +---categories
+|   |   |       page.tsx
+|   |   |       
+|   |   +---homepage
+|   |   |       page.tsx
+|   |   |       
+|   |   +---keys
+|   |   |       page.tsx
+|   |   |       
+|   |   +---orders
+|   |   |       page.tsx
+|   |   |       
+|   |   +---products
+|   |   |   |   page.tsx
+|   |   |   |   
+|   |   |   +---new
+|   |   |   |       page.tsx
+|   |   |   |       
+|   |   |   \---[id]
+|   |   |           page.tsx
+|   |   |           
+|   |   +---roles
+|   |   |       page.tsx
+|   |   |       
+|   |   +---settings
+|   |   |       page.tsx
+|   |   |       
+|   |   +---tickets
+|   |   |       page.tsx
+|   |   |       
+|   |   +---transactions
+|   |   |       page.tsx
+|   |   |       
+|   |   +---ui-customization
+|   |   |       page.tsx
+|   |   |       page.tsx.bak
+|   |   |       
+|   |   \---users
+|   |       |   page.tsx
+|   |       |   
+|   |       \---[id]
+|   |               page.tsx
+|   |               
+|   +---api
+|   |   +---admin
+|   |   |   +---audit-logs
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   +---categories
+|   |   |   |   |   route.ts
+|   |   |   |   |   
+|   |   |   |   \---[id]
+|   |   |   |           route.ts
+|   |   |   |           
+|   |   |   +---dashboard-stats
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   +---import-keys
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   +---online-count
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   +---orders
+|   |   |   |   |   route.ts
+|   |   |   |   |   
+|   |   |   |   \---[id]
+|   |   |   |       |   route.ts
+|   |   |   |       |   
+|   |   |   |       \---assign-keys
+|   |   |   |               route.ts
+|   |   |   |               
+|   |   |   +---parse-keys
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   +---permissions
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   +---products
+|   |   |   |   |   route.ts
+|   |   |   |   |   
+|   |   |   |   \---[id]
+|   |   |   |       |   route.ts
+|   |   |   |       |   
+|   |   |   |       \---keys
+|   |   |   |               route.ts
+|   |   |   |               
+|   |   |   +---settings
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   +---tickets
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   +---transactions
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   +---ui-elements
+|   |   |   |   |   route.ts
+|   |   |   |   |   
+|   |   |   |   \---[id]
+|   |   |   |           route.ts
+|   |   |   |           
+|   |   |   +---users
+|   |   |   |   |   route.ts
+|   |   |   |   |   
+|   |   |   |   \---[id]
+|   |   |   |           route.ts
+|   |   |   |           
+|   |   |   \---visit-log
+|   |   |           route.ts
+|   |   |           
+|   |   +---auth
+|   |   |   \---[...nextauth]
+|   |   |           route.ts
+|   |   |           
+|   |   +---cart
+|   |   |   \---sync
+|   |   |           route.ts
+|   |   |           
+|   |   +---checkout
+|   |   |       route.ts
+|   |   |       
+|   |   +---coupon
+|   |   |   \---validate
+|   |   |           route.ts
+|   |   |           
+|   |   +---payment
+|   |   |   +---bank-transfer
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   +---momo
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   \---zalopay
+|   |   |           route.ts
+|   |   |           
+|   |   +---public
+|   |   |   +---settings
+|   |   |   |       route.ts
+|   |   |   |       
+|   |   |   \---ui-elements
+|   |   |           route.ts
+|   |   |           
+|   |   +---register
+|   |   |       route.ts
+|   |   |       
+|   |   +---reviews
+|   |   |       route.ts
+|   |   |       
+|   |   +---tickets
+|   |   |   |   route.ts
+|   |   |   |   
+|   |   |   \---[id]
+|   |   |       |   route.ts
+|   |   |       |   
+|   |   |       \---messages
+|   |   |               route.ts
+|   |   |               
+|   |   +---track-visit
+|   |   |       route.ts
+|   |   |       
+|   |   +---user
+|   |   |   +---orders
+|   |   |   |   |   route.ts
+|   |   |   |   |   
+|   |   |   |   \---[id]
+|   |   |   |       |   route.ts
+|   |   |   |       |   
+|   |   |   |       \---pay
+|   |   |   |               route.ts
+|   |   |   |               
+|   |   |   \---profile
+|   |   |           route.ts
+|   |   |           
+|   |   \---webhook
+|   |       \---sepay
+|   |               route.ts
+|   |               
+|   +---cart
+|   |       page.tsx
+|   |       
+|   +---checkout
+|   |       page.tsx
+|   |       
+|   +---dashboard
+|   |       page.tsx
+|   |       
+|   +---deposit
+|   |       page.tsx
+|   |       
+|   +---login
+|   |       page.tsx
+|   |       
+|   +---product
+|   |   \---[slug]
+|   |           page.tsx
+|   |           
+|   +---products
+|   |       page.tsx
+|   |       
+|   +---register
+|   |       page.tsx
+|   |       
+|   \---support
+|           page.tsx
+|           
++---components
+|   |   AuthProvider.tsx
+|   |   ScrollToTop.tsx
+|   |   ThemeProvider.tsx
+|   |   UIElementsProvider.tsx
+|   |   VisitorTracker.tsx
+|   |   
+|   +---admin
+|   |       AdminKeysImport.tsx
+|   |       AdminProductForm.tsx
+|   |       AdminProductList.tsx
+|   |       AdminPromotionModal.tsx
+|   |       AdminThemeToggle.tsx
+|   |       OrderRow.tsx
+|   |       PermissionGuard.tsx
+|   |       
+|   +---home
+|   |       HomePageContent.tsx
+|   |       HomeSearchBar.tsx
+|   |       
+|   +---layout
+|   |       ContactWidget.tsx
+|   |       Footer.tsx
+|   |       Header.tsx
+|   |       SiteCustomizationBar.tsx
+|   |       
+|   \---ui
+|           AddToCartButton.tsx
+|           CartModal.tsx
+|           CopyKeyButton.tsx
+|           EmptyState.tsx
+|           HeroBanner.tsx
+|           ImageUpload.tsx
+|           OrderItemsList.tsx
+|           ProductActions.tsx
+|           ProductCard.tsx
+|           ProductFilter.tsx
+|           ProductTabs.tsx
+|           SiteName.tsx
+|           StickyActionBar.tsx
+|           ToggleSwitch.tsx
+|           
++---lib
+|       auditFormatter.ts
+|       cleanup.ts
+|       i18n.ts
+|       permissions.ts
+|       prisma.ts
+|       
++---store
+|       useCartStore.ts
+|       
+\---types
+        next-auth.d.ts
+        

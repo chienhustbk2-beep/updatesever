@@ -1,0 +1,74 @@
+================================================================================
+  BAO CAO TICH HOP CONG THANH TOAN & NAP TIEN TU DONG
+  (SePay + Web2M + VietQR)
+  Ngay: 2026-05-24
+================================================================================
+
+I. DANH SACH FILE DA TAO/SUA
+  -----------------------------------------
+
+  1. src/app/admin/settings/page.tsx (SUA)
+     - Them field: bankCode, activePaymentGateway, sepayApiToken,
+       web2mApiToken, web2mEndpoint vao SettingsData interface
+     - Them tab "Cong TT" (Cong thanh toan tu dong) voi:
+       * Radio button chon giua SePay / Web2M
+       * O nhap SePay API Token
+       * O nhap Web2M API Token + Endpoint
+       * Hien thi Cron Job URL de copy
+
+  2. src/app/api/web2m/sync/route.ts (TAO MOI)
+     - Endpoint: GET /api/web2m/sync?secret=CRON_SECRET
+     - Bao ve bang CRON_SECRET (bien moi truong)
+     - Lay cau hinh web2mApiToken + web2mEndpoint tu DB
+     - Goi API Web2M de lay lich su giao dich
+     - Parse noi dung: NAP [userId] hoac NAP [accountCode]
+     - Idempotency: kiem tra trung theo providerTxId va noi dung
+     - Xu ly trong prisma.$transaction (atomic)
+     - Ho tro nhieu format API (raw array, data[], transactions[])
+
+  3. src/app/deposit/page.tsx (SUA)
+     - Goi /api/public/settings de lay bankConfig + activeGateway
+     - Hien thi thong tin tai khoan tu DB thay vi hardcode
+     - Hien thi active gateway indicator
+     - Van dung VietQR API (img.vietqr.io) voi bankCode dong
+
+II. FILE KHONG CAN SUA (ke thua co che san co)
+  -----------------------------------------
+  - src/app/api/webhook/sepay/route.ts: Da co idempotency, giu nguyen
+  - prisma/schema.prisma: SystemSettings la key-value, khong can schema change
+  - src/app/api/admin/settings/route.ts: Ho tro GET/POST key-value
+  - src/app/api/public/settings/route.ts: Tra ve settings cho client
+
+III. IDEMPOTENCY CO CHE
+  -----------------------------------------
+  Ca SePay va Web2M deu dung chung co che:
+  1. Kiem tra providerTxId (transaction_id tu ben thu 3) trong description
+  2. Kiem tra noi dung + amount + userId da ton tai status SUCCESS
+  3. Toan bo xu ly trong prisma.$transaction (SQLite serialized)
+
+IV. BIEN MOI TRUONG (.env) CAN THEM
+  -----------------------------------------
+  # Bao ve cron job endpoint (bat buoc)
+  CRON_SECRET="your-cron-secret-here"
+
+  # Khong bat buoc (co the cau hinh qua Admin > Cong TT):
+  # - WEB2M_API_TOKEN
+  # - WEB2M_ENDPOINT
+  # - SEPAY_API_TOKEN
+  # - BANK_CODE (VD: VCB, BIDV, TCB)
+  # - BANK_ACCOUNT_NUMBER
+  # - BANK_ACCOUNT_NAME
+
+  => Toan bo cac cau hinh tren DA DUOC CHUYEN VAO GIAO DIEN ADMIN (Cong TT)
+     Chu website co the thay doi truc tiep ma can sua .env
+
+V. HUONG DAN SU DUNG
+  -----------------------------------------
+  1. Vao Admin > Cau hinh He thong > Cong TT
+  2. Chon cong thanh toan: SePay hoac Web2M
+  3. Nhap API Token tuong ung
+  4. (Neu dung SePay) Copy webhook URL: /api/webhook/sepay  -> dang ky trong SePay
+  5. (Neu dung Web2M) Thiet lap cron job goi /api/web2m/sync?secret=...
+  6. Kiem tra trang /deposit thay QR code + thong tin chuyen khoan
+
+================================================================================

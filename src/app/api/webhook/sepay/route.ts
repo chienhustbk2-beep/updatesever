@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { sendMail, depositSuccessTemplate } from "@/lib/mail";
 
 /**
  * SEPAY WEBHOOK API
@@ -151,8 +152,25 @@ export async function POST(request: NextRequest) {
       alreadyProcessed: result.alreadyProcessed,
     });
 
+    // 4.3: G?i email th�ng b�o n?u l� giao d?ch m?i
+    if (!result.alreadyProcessed && user.email) {
+      const txShortId = result.transaction.id.substring(0, 8).toUpperCase();
+      sendMail({
+        to: user.email,
+        subject: `N?p ti?n th�nh c�ng - ${txShortId}`,
+        html: depositSuccessTemplate({
+          userName: user.name || user.email,
+          amount: amount.toLocaleString("vi-VN"),
+          transactionCode: txShortId,
+          newBalance: result.newBalance.toLocaleString("vi-VN"),
+          depositMethod: "VietQR (SePay)",
+          email: user.email,
+        }),
+      });
+    }
+
     // ==========================================
-    // BƯỚC 5: Trả về 200 OK - SePay biết đã nhận thành công
+    // BU?C 5: Tr? v? 200 OK - SePay bi?t da nh?n th�nh c�ng
     // ==========================================
     return NextResponse.json(
       {

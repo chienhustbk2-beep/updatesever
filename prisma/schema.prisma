@@ -280,9 +280,6 @@ enum OrderStatus {
 
 enum PaymentMethod {
   BANK_TRANSFER
-  MOMO
-  ZALOPAY
-  CRYPTO
   BALANCE
   MANUAL
 }

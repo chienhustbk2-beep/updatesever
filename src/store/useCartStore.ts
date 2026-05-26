@@ -2,7 +2,9 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export interface CartItem { productId: string; name: string; price: number; salePrice?: number; image?: string; quantity: number; bulkDiscounts?: { minQty: number; discount: number }[] }
-interface CartState { cartItems: CartItem[]; addToCart: (item: CartItem) => void; removeFromCart: (productId: string) => void; updateQuantity: (productId: string, quantity: number) => void; clearCart: () => void; getTotalItems: () => number; getTotalPrice: () => number; syncToServer: () => Promise<void>; _hasHydrated: boolean }
+export interface UnavailableItem { id: string; name: string; reason: "hidden" | "out_of_stock" }
+export interface StockWarning { id: string; name: string; available: number; requested: number }
+interface CartState { cartItems: CartItem[]; unavailableItems: UnavailableItem[]; stockWarnings: StockWarning[]; addToCart: (item: CartItem) => void; removeFromCart: (productId: string) => void; updateQuantity: (productId: string, quantity: number) => void; clearCart: () => void; clearWarnings: () => void; getTotalItems: () => number; getTotalPrice: () => number; syncToServer: () => Promise<void>; _hasHydrated: boolean }
 let syncTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function debounceSync(syncFn: () => Promise<void>) {
@@ -16,6 +18,8 @@ export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       cartItems: [],
+      unavailableItems: [],
+      stockWarnings: [],
       _hasHydrated: false,
 
       addToCart: (item: CartItem) => {
@@ -74,7 +78,9 @@ export const useCartStore = create<CartState>()(
         debounceSync(() => get().syncToServer()) },
 
       clearCart: () => {
-        set({ cartItems: [] }) },
+        set({ cartItems: [], unavailableItems: [], stockWarnings: [] }) },
+      clearWarnings: () => {
+        set({ unavailableItems: [], stockWarnings: [] }) },
 
       getTotalItems: () => {
         return get().cartItems.reduce(
@@ -92,13 +98,20 @@ export const useCartStore = create<CartState>()(
         if (cartItems.length === 0) return;
 
         try {
-          await fetch("/api/cart/sync", {
+          const res = await fetch("/api/cart/sync", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ cartItems }),
           });
-}
-catch (err) {
+          if (res.ok) {
+            const data = await res.json();
+            if (data.unavailableProducts) {
+              set({ unavailableItems: data.unavailableProducts, stockWarnings: data.stockWarnings || [] });
+            } else {
+              set({ unavailableItems: [], stockWarnings: [] });
+            }
+          }
+        } catch (err) {
           console.error("Failed to sync cart to server:", err) }
       },
     }),

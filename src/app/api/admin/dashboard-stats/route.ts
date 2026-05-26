@@ -40,9 +40,8 @@ export async function GET(request: NextRequest) {
         startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
         break;
       default:
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     }
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const [
       totalRevenue,
       totalOrders,
@@ -59,7 +58,9 @@ export async function GET(request: NextRequest) {
       recentOrders,
       topCustomers,
       topDepositors,
-      revenueByMethod,
+      totalDeposit,
+      totalRevenueAllTime,
+      totalDepositAllTime,
     ] = await Promise.all([
       prisma.order.aggregate({
         _sum: { finalAmount: true },
@@ -115,11 +116,17 @@ export async function GET(request: NextRequest) {
         orderBy: { _sum: { amount: "desc" } },
         take: 10,
       }),
-      prisma.order.groupBy({
-        by: ["paymentMethod"],
+      prisma.transaction.aggregate({
+        _sum: { amount: true },
+        where: { type: "DEPOSIT", status: "SUCCESS", createdAt: { gte: startDate } },
+      }),
+      prisma.order.aggregate({
         _sum: { finalAmount: true },
-        _count: { id: true },
-        where: { status: "COMPLETED", createdAt: { gte: startDate } },
+        where: { status: "COMPLETED" },
+      }),
+      prisma.transaction.aggregate({
+        _sum: { amount: true },
+        where: { type: "DEPOSIT", status: "SUCCESS" },
       }),
     ]);
     const topCustomerDetails = await Promise.all(
@@ -167,50 +174,7 @@ export async function GET(request: NextRequest) {
       _count: true,
       where: { status: "COMPLETED", createdAt: { gte: startDate } },
     });
-    const categoryRevenue = await prisma.category.findMany({
-      include: {
-        products: {
-          include: {
-            orderItems: {
-              where: {
-                order: { status: "COMPLETED", createdAt: { gte: startDate } },
-              },
-              select: { total: true },
-            },
-          },
-        },
-      },
-    });
-    const categoryBreakdown = categoryRevenue
-      .map((cat) => ({
-        id: cat.id,
-        name: cat.name,
-        revenue: cat.products.reduce(
-          (sum, prod) =>
-            sum + prod.orderItems.reduce((pSum, item) => pSum + item.total, 0),
-          0,
-        ),
-      }))
-      .filter((c) => c.revenue > 0)
-      .sort((a, b) => b.revenue - a.revenue);
-    const previousPeriodStart = new Date(
-      startDate.getTime() - (now.getTime() - startDate.getTime()),
-    );
-    const prevRevenue = await prisma.order.aggregate({
-      _sum: { finalAmount: true },
-      where: {
-        status: "COMPLETED",
-        createdAt: { gte: previousPeriodStart, lt: startDate },
-      },
-    });
-    const prevRevenueTotal = prevRevenue._sum.finalAmount || 0;
     const currentRevenueTotal = totalRevenue._sum.finalAmount || 0;
-    const revenueGrowth =
-      prevRevenueTotal > 0
-        ? ((currentRevenueTotal - prevRevenueTotal) / prevRevenueTotal) * 100
-        : currentRevenueTotal > 0
-          ? 100
-          : 0;
 
     return NextResponse.json({
       stats: {
@@ -226,19 +190,15 @@ export async function GET(request: NextRequest) {
         soldKeys,
         pendingTickets,
         pendingReviews,
-        revenueGrowth: Math.round(revenueGrowth * 10) / 10,
+        totalDeposit: totalDeposit._sum.amount || 0,
+        totalRevenueAllTime: totalRevenueAllTime._sum.finalAmount || 0,
+        totalDepositAllTime: totalDepositAllTime._sum.amount || 0,
       },
       topCustomers: topCustomerDetails,
       topDepositors: topDepositorDetails,
       recentOrders,
       lowStockProducts,
       dailyRevenue,
-      categoryBreakdown,
-      revenueByMethod: revenueByMethod.map((r) => ({
-        method: r.paymentMethod,
-        total: r._sum.finalAmount || 0,
-        count: r._count.id,
-      })),
     });
   } catch (error) {
     console.error("Get dashboard stats error:", error);

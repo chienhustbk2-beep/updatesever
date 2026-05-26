@@ -100,14 +100,8 @@ const fileSpecificFixes = {
   // === checkout fix: return { order }); → return { order }; ===
   // Combined with the function fix above
 
-  // === webhook/sepay/route.ts ===
-  'src/app/api/webhook/sepay/route.ts': (c) => {
-    return c
-      .replace(/return \{\s*\n\s*transaction,\s*\n\s*newBalance: updatedUser\.balance,\s*\n\s*\}\);/, 
-        'return {\n        transaction,\n        newBalance: updatedUser.balance,\n      };')
-      .replace(/return \{\s*transaction,\s*newBalance:\s*updatedUser\.balance\}\);/, 
-        'return { transaction, newBalance: updatedUser.balance };');
-  },
+  // === webhook/sepay/route.ts removed (deleted) ===
+
   // === bank-transfer/route.ts: chain broken ===
   'src/app/api/payment/bank-transfer/route.ts': (c) => {
     c = c.replace(/\.replace\("\\{content\\}", encodeURIComponent\(content\)\);/g, '.replace("{content}", encodeURIComponent(content))');
@@ -154,7 +148,6 @@ const allFiles = [
   'src/app/api/checkout/route.ts',
   'src/app/api/cart/sync/route.ts',
   'src/app/api/public/ui-elements/route.ts',
-  'src/app/api/webhook/sepay/route.ts',
   'src/app/api/payment/bank-transfer/route.ts',
   'src/app/api/payment/momo/route.ts',
   'src/app/api/payment/zalopay/route.ts',

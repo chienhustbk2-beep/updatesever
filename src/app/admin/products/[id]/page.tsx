@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import ImageUpload from '@/components/ui/ImageUpload';
 import StickyActionBar from '@/components/ui/StickyActionBar';
+import RichTextEditor from '@/components/ui/RichTextEditor';
 
 interface Category { id: string; name: string; slug: string }
 
@@ -151,7 +152,7 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                 className="w-full rounded-xl bg-main border border-divider px-4 py-2.5 text-sm text-main focus:border-[var(--primary)] focus:outline-none" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted mb-1">Slug</label>
+              <label className="block text-sm font-medium text-muted mb-1">Đường dẫn</label>
               <input value={formData.slug} onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
                 className="w-full rounded-xl bg-main border border-divider px-4 py-2.5 text-sm text-main font-mono focus:border-[var(--primary)] focus:outline-none" />
             </div>
@@ -212,16 +213,22 @@ export default function EditProductPage({ params }: { params: Promise<{ id: stri
                 className="w-full rounded-xl bg-main border border-divider px-4 py-2.5 text-sm text-main focus:border-[var(--primary)] focus:outline-none" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted mb-1">Mô tả chi tiết</label>
-              <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={8}
-                className="w-full rounded-xl bg-main border border-divider px-4 py-2.5 text-sm text-main focus:border-[var(--primary)] focus:outline-none font-mono" />
+              <label className="block text-sm font-medium text-muted mb-2">Mô tả chi tiết</label>
+              <RichTextEditor
+                value={formData.description}
+                onChange={(val) => setFormData({ ...formData, description: val })}
+                placeholder="Nhập mô tả chi tiết sản phẩm..."
+                minHeight="250px"
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted mb-1">Hướng dẫn</label>
-              <textarea value={formData.guide} onChange={(e) => setFormData({ ...formData, guide: e.target.value })}
-                rows={5}
-                className="w-full rounded-xl bg-main border border-divider px-4 py-2.5 text-sm text-main focus:border-[var(--primary)] focus:outline-none font-mono" />
+              <label className="block text-sm font-medium text-muted mb-2">Hướng dẫn</label>
+              <RichTextEditor
+                value={formData.guide}
+                onChange={(val) => setFormData({ ...formData, guide: val })}
+                placeholder="Nhập hướng dẫn sử dụng..."
+                minHeight="200px"
+              />
             </div>
           </div>
         </div>

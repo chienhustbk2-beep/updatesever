@@ -1,17 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-
-// Bank transfer configuration
-const BANK_CONFIG = {
-  bankName: process.env.BANK_NAME || "Vietcombank",
-  accountNumber: process.env.BANK_ACCOUNT_NUMBER || "0123456789",
-  accountName: process.env.BANK_ACCOUNT_NAME || "CONG TY TNHH SOFTWARE KEY",
-  qrTemplate:
-    process.env.BANK_QR_TEMPLATE ||
-    "https://img.vietqr.io/image/{bankCode}-{accountNumber}-compact2.png?amount={amount}&addInfo={content}",
-  bankCode: process.env.BANK_CODE || "vietcombank",
-}
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
@@ -41,20 +30,33 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Lay cau hinh tu DB
+    const settings = await prisma.systemSettings.findMany({
+      where: { key: { in: ["bankName", "bankAccount", "bankAccountName", "bankCode"] } },
+    });
+    const s: Record<string, string> = {};
+    settings.forEach((e) => { s[e.key] = e.value });
+    const bankName = s.bankName || "Vietcombank";
+    const accountNumber = s.bankAccount || "0123456789";
+    const accountName = s.bankAccountName || "CONG TY TNHH SOFTWARE KEY";
+    const bankCode = s.bankCode || "vietcombank";
+
     // Generate QR code URL
+    const qrTemplate = "https://img.vietqr.io/image/{bankCode}-{accountNumber}-compact2.png?amount={amount}&addInfo={content}&accountName={accountName}";
     const content = order.transactionCode || order.orderNumber;
-    const qrCodeUrl = BANK_CONFIG.qrTemplate
-      .replace("{bankCode}", BANK_CONFIG.bankCode)
-      .replace("{accountNumber}", BANK_CONFIG.accountNumber)
+    const qrCodeUrl = qrTemplate
+      .replace("{bankCode}", bankCode)
+      .replace("{accountNumber}", accountNumber)
       .replace("{amount}", order.finalAmount.toString())
-      .replace("{content}", encodeURIComponent(content));
+      .replace("{content}", encodeURIComponent(content))
+      .replace("{accountName}", encodeURIComponent(accountName));
 
     return NextResponse.json({
       success: true,
       bankInfo: {
-        bankName: BANK_CONFIG.bankName,
-        accountNumber: BANK_CONFIG.accountNumber,
-        accountName: BANK_CONFIG.accountName,
+        bankName,
+        accountNumber,
+        accountName,
         amount: order.finalAmount,
         content: content,
         qrCodeUrl,

@@ -134,6 +134,13 @@ export async function DELETE(
 
     await prisma.productKey.delete({ where: { id: keyId } });
 
+    if (key.status === "AVAILABLE") {
+      await prisma.product.update({
+        where: { id: key.productId },
+        data: { stock: { decrement: 1 } },
+      });
+    }
+
     await prisma.auditLog.create({
       data: {
         userId: admin.id,

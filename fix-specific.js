@@ -41,9 +41,7 @@ const fixes = {
   'src/app/api/checkout/route.ts': (c) => {
     return c.replace(/return \{ order \}\);/g, 'return { order };');
   },
-  'src/app/api/webhook/sepay/route.ts': (c) => {
-    return c.replace(/\}\);\s*\n\s*\}/g, '});\n  }');
-  },
+  // === webhook/sepay/route.ts removed (deleted) ===
 
   // } catch on wrong line - need to properly close try block
   'src/app/api/admin/orders/[id]/assign-keys/route.ts': (c) => {

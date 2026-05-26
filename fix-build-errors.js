@@ -23,7 +23,6 @@ const apiFiles = [
   'src/app/api/user/orders/[id]/pay/route.ts',
   'src/app/api/user/orders/[id]/route.ts',
   'src/app/api/user/profile/route.ts',
-  'src/app/api/webhook/sepay/route.ts',
   'src/app/api/coupon/validate/route.ts',
   'src/app/api/register/route.ts',
   'src/app/api/checkout/route.ts',

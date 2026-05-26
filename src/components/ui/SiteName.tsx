@@ -6,7 +6,7 @@ export default function SiteName({
 }: {
   settings: Record<string, string>;
   className?: string }) {
-  const name = settings.siteName || "DigitalShop";
+  const name = settings.siteName || "";
   return (
     <Link href="/" className={`text-xl font-bold tracking-tight ${className}`}>
       {" "}

@@ -1,0 +1,329 @@
+======================================================================
+  HƯỚNG DẪN CẬP NHẬT & TRIỂN KHAI HỆ THỐNG ECOMMERCE-DIGITAL
+======================================================================
+
+MỤC LỤC:
+  1. Cập nhật code lên VPS (khi đã có update.zip trên GitHub)
+  2. Thiết lập VPS mới từ đầu
+  3. Đóng gói file update.zip gửi lên GitHub
+  4. Cấu trúc thư mục quan trọng
+  5. Các lệnh thường dùng
+
+======================================================================
+1. CẬP NHẬT CODE LÊN VPS (KHI ĐÃ CÓ UPDATE TRÊN GITHUB)
+======================================================================
+
+  Quy trình này dùng khi bạn có file update.zip và version.txt trên
+  GitHub repo, và VPS đã cấu hình URL cập nhật.
+
+  Bước 1: SSH vào VPS
+  ---------------
+    $ ssh root@<IP_VPS>
+    (Nhập password khi được hỏi)
+
+  Bước 2: Kiểm tra file .env có đủ 2 dòng URL chưa
+  ---------------
+    $ cd /root/ecommerce-digital
+    $ grep UPDATE_VERSION .env
+    $ grep UPDATE_ZIP_URL .env
+
+    Nếu CHƯA có, thêm vào .env:
+      echo "UPDATE_VERSION_URL=https://<PAT>@raw.githubusercontent.com/<owner>/<repo>/main/version.txt" >> .env
+      echo "UPDATE_ZIP_URL=https://<PAT>@raw.githubusercontent.com/<owner>/<repo>/main/update.zip" >> .env
+
+    Giải thích:
+      <PAT>     = GitHub Personal Access Token (vd: ghp_xxxx...)
+      <owner>   = Tên user hoặc tổ chức GitHub (vd: chienhustbk2-beep)
+      <repo>    = Tên repo chứa update (vd: updatesever)
+
+  Bước 3: Vào Admin để cập nhật
+  ---------------
+    - Mở trình duyệt vào trang Admin
+    - Vào menu "Cập nhật hệ thống"
+    - Ấn nút "Kiểm tra phiên bản"
+    - Nếu có bản mới, ấn "Cập nhật ngay"
+    - Hệ thống tự động: tải zip -> giải nén -> cài đặt -> restart
+    - Sau khi restart, trang tự F5 và hiện thông báo thành công
+
+  Bước 4: Kiểm tra lại
+  ---------------
+    - Vào Admin -> Cập nhật hệ thống: xem version mới
+    - Kiểm tra các chức năng: trang chủ, sản phẩm, checkout...
+
+======================================================================
+2. THIẾT LẬP VPS MỚI TỪ ĐẦU
+======================================================================
+
+  Yêu cầu:
+    - VPS Ubuntu 20.04 / 22.04
+    - RAM tối thiểu 1GB (khuyên dùng 2GB+)
+    - Dung lượng ổ cứng tối thiểu 10GB
+
+  Bước 1: Cập nhật hệ thống
+  ---------------
+    $ apt update && apt upgrade -y
+    $ apt install -y curl wget git unzip nginx
+
+  Bước 2: Cài Node.js (v22+)
+  ---------------
+    $ curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    $ apt install -y nodejs
+    $ node -v   # Kiểm tra, phải >= 22
+
+  Bước 3: Cài PM2
+  ---------------
+    $ npm install -g pm2
+
+  Bước 4: Clone source code từ GitHub
+  ---------------
+    $ cd /root
+    $ git clone https://github.com/<owner>/<repo>.git ecommerce-digital
+    $ cd ecommerce-digital
+
+  Bước 5: Tạo file .env
+  ---------------
+    $ cp .env.example .env   # hoặc tạo mới
+    $ nano .env
+
+    Nội dung tối thiểu của .env:
+      DATABASE_URL="file:./prisma/dev.db"
+      NEXTAUTH_SECRET="<một chuỗi ngẫu nhiên, dùng lệnh: openssl rand -base64 32>"
+      NEXTAUTH_URL=https://<domain-cua-ban>
+      AUTH_TRUST_HOST="true"
+      CRON_SECRET="<một chuỗi bí mật cho cron job>"
+      UPDATE_VERSION_URL=https://<PAT>@raw.githubusercontent.com/<owner>/<repo>/main/version.txt
+      UPDATE_ZIP_URL=https://<PAT>@raw.githubusercontent.com/<owner>/<repo>/main/update.zip
+
+    Lưu ý:
+      - NEXTAUTH_SECRET: dùng lệnh `openssl rand -base64 32` để tạo
+      - UPDATE_VERSION_URL và UPDATE_ZIP_URL: nếu đã có trong DB (cài từ
+        Admin -> Cài đặt -> tab Cập nhật) thì không cần thêm vào .env
+
+  Bước 6: Cài đặt dependencies
+  ---------------
+    $ npm install
+
+  Bước 7: Khởi tạo database
+  ---------------
+    $ npx prisma generate
+    $ npx prisma db push
+    $ npm run seed
+
+  Bước 8: Build và khởi động
+  ---------------
+    $ npm run build
+    $ pm2 start npm --name "ecommerce" -- start
+    $ pm2 save
+    $ pm2 startup   # Chạy lệnh hiện ra để auto start khi reboot
+
+  Bước 9: Cấu hình Nginx (nếu dùng domain)
+  ---------------
+    $ nano /etc/nginx/sites-available/ecommerce
+
+    Nội dung:
+      server {
+          listen 80;
+          server_name <domain-cua-ban>;
+
+          location / {
+              proxy_pass http://localhost:3000;
+              proxy_http_version 1.1;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection "upgrade";
+              proxy_read_timeout 86400;
+          }
+      }
+
+    $ ln -sf /etc/nginx/sites-available/ecommerce /etc/nginx/sites-enabled/
+    $ nginx -t   # Kiểm tra lỗi
+    $ systemctl reload nginx
+
+  Bước 10: Cài SSL (nếu dùng domain)
+  ---------------
+    $ apt install -y certbot python3-certbot-nginx
+    $ certbot --nginx -d <domain-cua-ban>
+
+  Bước 11: Kiểm tra
+  ---------------
+    - Mở trình duyệt vào https://<domain-cua-ban>
+    - Đăng ký tài khoản đầu tiên
+    - Vào /admin để vào trang quản trị
+
+======================================================================
+3. ĐÓNG GÓI FILE UPDATE.ZIP GỬI LÊN GITHUB
+======================================================================
+
+  Quy trình này dùng khi bạn sửa code, muốn đóng gói và push
+  update.zip lên GitHub để VPS tự động cập nhật.
+
+  Bước 1: Bump version trong package.json
+  ---------------
+    Mở file package.json, sửa dòng:
+      "version": "0.1.1"  ->  "version": "0.1.2"
+
+    (Cứ tăng số cuối lên 1 mỗi lần update)
+
+  Bước 2: Build project
+  ---------------
+    $ npm run build
+
+    Kiểm tra build thành công (không lỗi TypeScript, không lỗi ESLint).
+    Nếu có lỗi, sửa code trước khi tiếp tục.
+
+  Bước 3: Tạo thư mục tạm
+  ---------------
+    $ mkdir -p /tmp/update-package
+    $ rm -rf /tmp/update-package/*
+
+    Copy các file cần thiết:
+      cp -r src /tmp/update-package/src
+      cp -r .next /tmp/update-package/.next
+      rm -rf /tmp/update-package/.next/dev   # Xóa cache dev (rất lớn)
+      cp package.json /tmp/update-package/
+      cp package-lock.json /tmp/update-package/
+      cp next.config.ts /tmp/update-package/
+      cp tsconfig.json /tmp/update-package/
+      cp tailwind.config.ts /tmp/update-package/
+      cp postcss.config.mjs /tmp/update-package/
+      cp middleware.ts /tmp/update-package/
+      cp -r prisma /tmp/update-package/prisma
+      rm -f /tmp/update-package/prisma/*.db   # Xóa database file
+      cp -r public /tmp/update-package/public
+      rm -rf /tmp/update-package/public/uploads  # Xóa uploads
+
+  Bước 4: Nén thành update.zip (QUAN TRỌNG: dùng forward slash)
+  ---------------
+    Trên LINUX / MacOS:
+      $ cd /tmp/update-package
+      $ zip -r /root/ecommerce-digital/update.zip .
+
+    Trên WINDOWS (dùng PowerShell):
+      Dùng lệnh .NET ZipArchive (xem script bên dưới)
+      
+      KHÔNG dùng Compress-Archive vì tạo backslash \
+      KHÔNG dùng chuột phải -> Send to Compressed folder vì tạo backslash \
+
+    Script PowerShell tạo zip đúng (chạy trên Windows):
+    ---------------------------------------------------
+    $srcDir = "$env:TEMP\update-package"
+    $outZip = "C:\path\to\update.zip"
+    if (Test-Path $outZip) { Remove-Item $outZip -Force }
+
+    Add-Type -AssemblyName System.IO.Compression
+    $zip = [System.IO.Compression.ZipFile]::Open($outZip, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+      Get-ChildItem $srcDir -Recurse -File | ForEach-Object {
+        $relPath = $_.FullName.Substring($srcDir.Length + 1) -replace '\\', '/'
+        $entry = $zip.CreateEntry($relPath, [System.IO.Compression.CompressionLevel]::Optimal)
+        $writer = New-Object System.IO.BinaryWriter $entry.Open()
+        $writer.Write([System.IO.File]::ReadAllBytes($_.FullName))
+        $writer.Close()
+      }
+    } finally { $zip.Dispose() }
+    ---------------------------------------------------
+
+  Bước 5: Kiểm tra zip không có backslash
+  ---------------
+    Trên Linux:
+      $ unzip -l /root/ecommerce-digital/update.zip | head -20
+      # Kiểm tra không có dấu \ trong đường dẫn
+
+    Trên Windows:
+      $verify = [System.IO.Compression.ZipFile]::OpenRead("update.zip")
+      foreach ($e in $verify.Entries) {
+        if ($e.FullName.Contains('\')) { Write-Host "LOI: $($e.FullName)" }
+      }
+      $verify.Dispose()
+
+  Bước 6: Tạo file version.txt
+  ---------------
+    Trên Linux:
+      $ echo "0.1.2" > /tmp/update-package/../version.txt
+
+    Trên Windows:
+      $ Set-Content -Path "version.txt" -Value "0.1.2" -NoNewline
+
+  Bước 7: Push lên GitHub
+  ---------------
+    $ cd /tmp
+    $ git clone https://<PAT>@github.com/<owner>/<repo>.git temp-repo
+    $ cd temp-repo
+    $ cp /root/ecommerce-digital/update.zip .
+    $ cp /root/ecommerce-digital/version.txt .
+    $ git add -A
+    $ git commit -m "Release v0.1.2 - mo ta tinh nang moi"
+    $ git push origin main
+
+    Lưu ý: Cần GitHub PAT (Personal Access Token) có quyền push vào repo.
+            Tạo PAT tại: GitHub -> Settings -> Developer settings -> 
+            Personal access tokens -> Tokens (classic)
+            Chọn scope: repo (Full control)
+
+    Có thể push từ máy Windows cũng tương tự:
+      $ cd /tmp/temp-repo
+      (copy update.zip và version.txt vào)
+      $ git add -A
+      $ git commit -m "Release v0.1.2"
+      $ git push origin main
+
+======================================================================
+4. CẤU TRÚC THƯ MỤC QUAN TRỌNG
+======================================================================
+
+  ecommerce-digital/
+  ├── src/
+  │   ├── app/
+  │   │   ├── admin/            # Trang quản trị
+  │   │   ├── api/              # API routes
+  │   │   └── ...               # Các trang public
+  │   ├── components/
+  │   │   ├── admin/            # Component cho admin
+  │   │   ├── home/             # Component trang chủ
+  │   │   ├── layout/           # Header, Footer, Sidebar
+  │   │   └── ui/               # UI components dùng chung
+  │   ├── lib/                  # Utility functions
+  │   └── store/                # Zustand stores
+  ├── prisma/
+  │   └── schema.prisma         # Database schema
+  ├── public/                   # Static files
+  ├── .next/                    # Build output (KHÔNG push lên git)
+  ├── node_modules/             # Dependencies (KHÔNG push lên git)
+  ├── .env                      # Environment variables (KHÔNG push lên git)
+  ├── .gitignore
+  ├── update-guide.txt          # File này
+  ├── package.json
+  └── next.config.ts
+
+======================================================================
+5. CÁC LỆNH THƯỜNG DÙNG
+======================================================================
+
+  Trên VPS (quản lý app):
+    pm2 list                         # Xem danh sách process
+    pm2 logs                         # Xem log realtime
+    pm2 logs --lines 100             # Xem 100 dòng log gần nhất
+    pm2 restart ecommerce            # Restart app
+    pm2 stop ecommerce               # Dừng app
+    pm2 start ecommerce              # Chạy app
+    pm2 save                         # Lưu danh sách process
+    pm2 startup                      # Auto start khi reboot
+
+  Trên VPS (cập nhật thủ công - không dùng auto-update):
+    cd /root/ecommerce-digital
+    git pull                         # Kéo code mới (nếu clone full repo)
+    npm install                      # Cài dependencies mới
+    npm run build                    # Build lại
+    pm2 restart ecommerce            # Restart
+
+  Trên máy dev (phát triển):
+    npm run dev                      # Chạy dev server (Turbopack)
+    npm run build                    # Build production
+    npm run seed                     # Seed database
+
+======================================================================
+  HẾT
+======================================================================

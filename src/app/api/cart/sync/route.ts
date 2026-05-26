@@ -25,6 +25,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Giỏ hàng trống" }, { status: 400 });
     }
 
+    // Kiểm tra sản phẩm còn kinh doanh + tồn kho
+    const productIds = [...new Set(cartItems.map((i) => i.productId))];
+    const dbProducts = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, status: true, name: true, stock: true, type: true, _count: { select: { productKeys: { where: { status: "AVAILABLE" } } } } },
+    });
+    const productStockMap = new Map(dbProducts.map((p) => [p.id, p.type === "SOFTWARE_KEY" || p.type === "LICENSE_KEY" || p.type === "SUBSCRIPTION" ? p._count.productKeys : p.stock]));
+    const productStatusMap = new Map(dbProducts.map((p) => [p.id, p.status]));
+
+    const unavailableProducts: { id: string; name: string; reason: "hidden" | "out_of_stock" }[] = [];
+    const stockWarnings: { id: string; name: string; available: number; requested: number }[] = [];
+
+    for (const item of cartItems) {
+      const status = productStatusMap.get(item.productId);
+      if (!status || status === "HIDDEN" || status === "DRAFT") {
+        unavailableProducts.push({ id: item.productId, name: item.name, reason: "hidden" });
+        continue;
+      }
+      const available = productStockMap.get(item.productId) ?? 0;
+      if (status === "OUT_OF_STOCK" || available <= 0) {
+        unavailableProducts.push({ id: item.productId, name: item.name, reason: "out_of_stock" });
+        continue;
+      }
+      if (item.quantity > available) {
+        stockWarnings.push({ id: item.productId, name: item.name, available, requested: item.quantity });
+      }
+    }
+
+    if (unavailableProducts.length > 0) {
+      return NextResponse.json({
+        success: false,
+        unavailableProducts,
+        stockWarnings,
+        message: "Một số sản phẩm không khả dụng, vui lòng xoá khỏi giỏ hàng.",
+      }, { status: 200 });
+    }
+
     // Tính tổng tiền
     let totalAmount = 0;
     for (const item of cartItems) {
@@ -170,6 +207,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
+        unavailableProducts,
         order: {
           id: result.order.id,
           orderNumber: result.order.orderNumber,

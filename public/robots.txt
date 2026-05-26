@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://chienhust.com/sitemap.xml

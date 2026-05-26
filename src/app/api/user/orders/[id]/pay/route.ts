@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+
+const payBodySchema = z.object({
+  paymentMethod: z.enum(["BALANCE"]).optional().default("BALANCE"),
+});
 
 export async function POST(
   request: NextRequest,
@@ -16,8 +21,15 @@ export async function POST(
     }
     const userId = session.user.id;
     const { id: orderId } = await params;
-    const body = await request.json();
-    const { paymentMethod = "BALANCE" } = body;
+
+    const bodyParsed = payBodySchema.safeParse(await request.json());
+    if (!bodyParsed.success) {
+      return NextResponse.json(
+        { error: "Dữ liệu không hợp lệ", details: bodyParsed.error.issues },
+        { status: 400 },
+      );
+    }
+    const { paymentMethod } = bodyParsed.data;
 
     // Tìm đơn hàng
     const order = await prisma.order.findUnique({
@@ -135,15 +147,13 @@ export async function POST(
           where: { id: item.productId },
           data: { stock: { decrement: item.quantity } },
         });
-      }
 
-      for (const item of order.items) {
-        for (let i = 0; i < item.quantity; i++) {
+        for (const key of availableKeys) {
           await tx.download.create({
             data: {
               orderId: orderId,
               userId,
-              productKey: null,
+              productKey: key.keyValue,
               downloadUrl: null,
               maxDownloads: 5,
             },

@@ -97,7 +97,7 @@ export async function DELETE(
 
     const category = await prisma.category.findUnique({
       where: { id },
-      include: { _count: { select: { products: true, children: true } } },
+      include: { _count: { select: { children: true } } },
     });
     if (!category) {
       return NextResponse.json(
@@ -105,7 +105,10 @@ export async function DELETE(
         { status: 404 },
       );
     }
-    if (category._count.products > 0) {
+    const activeProductCount = await prisma.product.count({
+      where: { categoryId: id, NOT: { slug: { startsWith: "deleted-" } } },
+    });
+    if (activeProductCount > 0) {
       return NextResponse.json(
         { error: "Không thể xóa danh mục có chứa sản phẩm" },
         { status: 400 },

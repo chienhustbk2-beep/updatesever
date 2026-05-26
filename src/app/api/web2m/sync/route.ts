@@ -2,108 +2,118 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendMail, depositSuccessTemplate } from "@/lib/mail";
 
-/**
- * WEB2M SYNC API
- * ===============
- * Endpoint: GET /api/web2m/sync?secret=YOUR_CRON_SECRET
- *
- * Goi dinh ky (cron job) de dong bo giao dich tu Web2M ve he thong.
- * Yeu cau tham so `secret` de bao ve endpoint khoi truy cap trai phep.
- *
- * Web2M API format (du kien):
- *   GET {endpoint}/history?token={apiToken}
- * Response:
- *   { "status": "success", "data": [{ "transaction_id": "...", "amount": 50000, "content": "NAP user123", ... }] }
- */
-
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const cronSecret = searchParams.get("secret");
-
-    // Basic protection: yeu cau secret
-    if (!cronSecret || cronSecret !== process.env.CRON_SECRET) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Lay cau hinh Web2M tu DB
+    // 1. Lay cau hinh tu DB
     const settings = await prisma.systemSettings.findMany({
-      where: { key: { in: ["web2mApiToken", "web2mEndpoint", "activePaymentGateway"] } },
+      where: {
+        key: { in: ["bankCode", "bankAccount", "web2mBankPassword", "web2mApiToken", "web2mEndpoint", "depositPrefix", "deposit_bonus_rules"] },
+      },
     });
-    const settingsMap: Record<string, string> = {};
-    settings.forEach((s) => { settingsMap[s.key] = s.value });
+    const s: Record<string, string> = {};
+    settings.forEach((e) => { s[e.key] = e.value });
 
-    const apiToken = settingsMap.web2mApiToken;
-    const endpoint = settingsMap.web2mEndpoint || "https://api.web2m.com";
+    const bankCode = s.bankCode || "";
+    const bankAccount = s.bankAccount || "";
+    const web2mPassword = s.web2mBankPassword || "";
+    const web2mToken = s.web2mApiToken || "";
+    const depositPrefix = s.depositPrefix || "MMO";
 
-    if (!apiToken) {
+    const missing = [];
+    if (!bankCode) missing.push("bankCode");
+    if (!bankAccount) missing.push("bankAccount");
+    if (!web2mPassword) missing.push("web2mBankPassword");
+    if (!web2mToken) missing.push("web2mApiToken");
+    if (missing.length > 0) {
       return NextResponse.json(
-        { error: "Web2M API Token chua duoc cau hinh" },
+        { error: `Thieu cau hinh Web2M: ${missing.join(", ")}` },
         { status: 400 },
       );
     }
 
-    // Goi API Web2M lay danh sach giao dich
-    const web2mUrl = `${endpoint}/history?token=${apiToken}`;
-    console.log("[Web2M Sync] Fetching transactions from Web2M");
+    const VALID_BANK_CODES = [
+      "vcb", "bidv", "vtb", "tcb", "mb", "acb", "hdb", "vp",
+      "tpb", "vib", "msb", "sacombank", "shb", "ocb", "lpb",
+      "nab", "ssb", "cbb", "abb", "bvb", "dab", "eab", "gpb",
+      "hvb", "kvb", "nav", "pvb", "scb", "seab", "stb",
+    ];
+    const normalizedBankCode = bankCode.trim().toLowerCase();
+    if (!VALID_BANK_CODES.includes(normalizedBankCode)) {
+      return NextResponse.json(
+        { error: `Bank Code "${bankCode}" khong hop le. Cac ma ho tro: ${VALID_BANK_CODES.join(", ")}` },
+        { status: 400 },
+      );
+    }
 
-    const response = await fetch(web2mUrl, {
+    // 2. Dung endpoint tu settings (hoac tu dong ghep neu chua co)
+    const baseUrl = s.web2mEndpoint || `https://api.web2m.com/historyapi${normalizedBankCode}v3`;
+    const fullApiUrl = `${baseUrl}/${encodeURIComponent(web2mPassword)}/${encodeURIComponent(bankAccount)}/${encodeURIComponent(web2mToken)}`;
+    console.log("[Web2M Sync] Fetching:", fullApiUrl.replace(web2mPassword, "***"));
+
+    const response = await fetch(fullApiUrl, {
       headers: { "Content-Type": "application/json" },
       signal: AbortSignal.timeout(30000),
     });
 
     if (!response.ok) {
-      console.error("[Web2M Sync] API error:", response.status);
+      console.error("[Web2M Sync] HTTP error:", response.status);
       return NextResponse.json(
         { error: `Web2M API tra ve loi HTTP ${response.status}` },
         { status: 502 },
       );
     }
 
-    const rawData = await response.json();
+    const data = await response.json();
 
-    // Chuan hoa du lieu dau vao (ho tro nhieu format API)
-    const transactions = Array.isArray(rawData)
-      ? rawData
-      : rawData.data
-        ? (Array.isArray(rawData.data) ? rawData.data : [rawData.data])
-        : rawData.transactions
-          ? (Array.isArray(rawData.transactions) ? rawData.transactions : [rawData.transactions])
-          : [];
-
-    if (transactions.length === 0) {
+    // 3. Kiem tra cau truc JSON chuan Web2M V3
+    if (!(data.status === true && Array.isArray(data.transactions))) {
       return NextResponse.json({
         success: true,
-        message: "Khong co giao dich moi tu Web2M",
+        message: "Khong co giao dich moi tu Web2M hoac sai dinh dang JSON",
         processed: 0,
         skipped: 0,
       });
     }
 
-    // Xu ly tung giao dich voi co che idempotency
+    // 4. Chi loc giao dich loai IN (tien nap vao)
+    const inTransactions = data.transactions.filter(
+      (tx: { type?: string }) => tx.type === "IN",
+    );
+
+    if (inTransactions.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: "Khong co giao dich nap tien (type=IN) tu Web2M",
+        processed: 0,
+        skipped: 0,
+      });
+    }
+
+    // 5. Xu ly tung giao dich
     let processed = 0;
     let skipped = 0;
     const results: { transactionId: string; userId: string; amount: number; status: string }[] = [];
 
-    for (const tx of transactions) {
-      const amount = parseFloat(tx.amount || tx.money || tx.price || 0);
-      const content = (tx.content || tx.description || tx.message || "").trim();
-      const providerTxId = tx.transaction_id || tx.id || tx.code || tx.txnId || "";
+    for (const tx of inTransactions) {
+      const amount = parseFloat(tx.amount || "0");
+      const content = (tx.description || "").trim();
+      const providerTxId = String(tx.transactionID || tx.transaction_id || tx.id || tx.code || "");
 
-      if (!amount || amount <= 0 || !content) {
+      if (!amount || amount <= 0 || !content || !providerTxId) {
         skipped++;
         continue;
       }
 
-      // Parse noi dung: NAP [userId] hoac NAP [accountCode]
-      const napMatch = content.match(/NAP\s+(\S+)/i);
+      // Parse noi dung nap tien: {prefix} [userId]
+      const prefixEscaped = depositPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const napMatch = content.match(new RegExp(`${prefixEscaped}\\s+(\\S+)`, "i"));
       if (!napMatch) {
         skipped++;
         continue;
       }
       const identifier = napMatch[1];
 
-      // Tim user theo userId truoc, sau do accountCode
+      // Tim user
       const user = await prisma.user.findFirst({
         where: {
           OR: [
@@ -113,35 +123,21 @@ export async function GET(request: NextRequest) {
         },
       });
       if (!user) {
-        console.log("[Web2M Sync] User not found for identifier:", identifier);
+        console.log("[Web2M Sync] User not found:", identifier);
         skipped++;
         continue;
       }
 
       // Xu ly trong transaction voi idempotency check
       const result = await prisma.$transaction(async (txDb) => {
-        // Idempotency: kiem tra transaction da xu ly qua providerTxId hoac noi dung
-        const existingById = providerTxId
+        // Kiem tra transactionID da xu ly chua
+        const existing = providerTxId
           ? await txDb.transaction.findFirst({
               where: { description: { contains: providerTxId } },
             })
           : null;
 
-        if (existingById) {
-          return { status: "skipped" as const };
-        }
-
-        const existingByContent = await txDb.transaction.findFirst({
-          where: {
-            userId: user.id,
-            type: "DEPOSIT",
-            amount,
-            description: { contains: content },
-            status: "SUCCESS",
-          },
-        });
-
-        if (existingByContent) {
+        if (existing) {
           return { status: "skipped" as const };
         }
 
@@ -151,7 +147,7 @@ export async function GET(request: NextRequest) {
             userId: user.id,
             type: "DEPOSIT",
             amount,
-            description: `Nap tien tu Web2M - ${content}${providerTxId ? ` (${providerTxId})` : ""}`,
+            description: `Nap tien tu Web2M - ${content} (${providerTxId})`,
             status: "SUCCESS",
           },
         });
@@ -161,16 +157,50 @@ export async function GET(request: NextRequest) {
           data: { balance: { increment: amount } },
         });
 
+        // Apply deposit bonus
+        let bonusAmount = 0;
+        try {
+          const bonusRules = JSON.parse(s.deposit_bonus_rules || '[]');
+          if (Array.isArray(bonusRules) && bonusRules.length > 0) {
+            const sorted = bonusRules
+              .filter((r: { minAmount: number; bonus: number }) => r.minAmount > 0 && r.bonus > 0)
+              .sort((a: { minAmount: number }, b: { minAmount: number }) => b.minAmount - a.minAmount);
+            const matched = sorted.find((r: { minAmount: number }) => amount >= r.minAmount);
+            if (matched) {
+              bonusAmount = matched.bonus;
+              await txDb.transaction.create({
+                data: {
+                  userId: user.id,
+                  type: "DEPOSIT",
+                  amount: bonusAmount,
+                  description: `Thưởng nạp tiền: ${matched.label || `Nạp từ ${matched.minAmount.toLocaleString("vi-VN")}đ`} (${providerTxId})`,
+                  status: "SUCCESS",
+                },
+              });
+              await txDb.user.update({
+                where: { id: user.id },
+                data: { balance: { increment: bonusAmount } },
+              });
+            }
+          }
+        } catch {}
+
         return { status: "processed" as const };
       });
 
       if (result.status === "processed") {
         processed++;
         results.push({ transactionId: providerTxId, userId: user.id, amount, status: "SUCCESS" });
-        // Gui email thong bao neu user co email
+
+        // Gui email
         if (user.email) {
-          const updatedUser = await prisma.user.findUnique({ where: { id: user.id }, select: { balance: true } });
-          const txShortId = (providerTxId || "").substring(0, 8).toUpperCase() || `TXN${Date.now().toString(36).toUpperCase()}`;
+          const updatedUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { balance: true },
+          });
+
+          const txShortId = (providerTxId || "").substring(0, 8).toUpperCase();
+
           sendMail({
             to: user.email,
             subject: `Nap tien thanh cong - ${txShortId}`,
@@ -189,7 +219,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log("[Web2M Sync] Completed:", { processed, skipped });
+    console.log("[Web2M Sync] Done:", { processed, skipped });
 
     return NextResponse.json({
       success: true,
@@ -199,7 +229,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("[Web2M Sync] Error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: `Internal server error: ${error instanceof Error ? error.message : "Unknown"}` },
       { status: 500 },
     );
   }

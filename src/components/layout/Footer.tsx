@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Mail, Phone, MapPin, MessageCircle } from "lucide-react";
 import { useUIElements } from "@/components/UIElementsProvider";
 export default function Footer() {
-  const { settings, t } = useUIElements();
+  const { settings, t, isVisible } = useUIElements();
   const pathname = usePathname();
   const router = useRouter();
   const contact = {
@@ -14,6 +14,7 @@ export default function Footer() {
     email: settings.contactEmail || "",
     phone: settings.contactPhone || "",
   };
+  if (!isVisible('footer')) return null;
   return (
     <footer className="border-t border-divider bg-[var(--bg-card-alt)]">
       {" "}
@@ -132,6 +133,22 @@ export default function Footer() {
                   {t("nav.dashboard")}
                 </Link>
               </li>{" "}
+              <li>
+                <Link
+                  href="/terms"
+                  className="text-sm text-muted transition hover:text-[var(--primary)]"
+                >
+                  Điều khoản & Chính sách
+                </Link>
+              </li>{" "}
+              <li>
+                <Link
+                  href="/privacy"
+                  className="text-sm text-muted transition hover:text-[var(--primary)]"
+                >
+                  Chính sách bảo mật
+                </Link>
+              </li>{" "}
             </ul>{" "}
           </div>{" "}
           {/* Categories */}{" "}
@@ -210,8 +227,7 @@ export default function Footer() {
           {" "}
           <p className="text-sm text-muted">
             {" "}
-            © 2026 {settings.siteName || "DigitalShop"}. All rights
-            reserved.{" "}
+            {settings.footerText || `© ${new Date().getFullYear()} ${settings.siteName || ""}. All rights reserved.`}{" "}
           </p>{" "}
         </div>{" "}
       </div>{" "}

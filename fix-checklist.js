@@ -127,10 +127,7 @@ function fixFileSpecific(filePath, content) {
     content = content.replace(/position: string \}/g, 'position: string;\n      }');
   }
 
-  // webhook/sepay/route.ts
-  if (p.includes('webhook/sepay/route.ts')) {
-    content = content.replace(/return \{\s*transaction,\s*newBalance:\s*updatedUser\.balance\s*\}\);/g, 'return { transaction, newBalance: updatedUser.balance };');
-  }
+  // webhook/sepay/route.ts removed (deleted)
 
   // bank-transfer/route.ts
   if (p.includes('bank-transfer/route.ts')) {
@@ -169,7 +166,6 @@ const allFiles = [
   'src/app/api/checkout/route.ts',
   'src/app/api/cart/sync/route.ts',
   'src/app/api/public/ui-elements/route.ts',
-  'src/app/api/webhook/sepay/route.ts',
   'src/app/api/payment/bank-transfer/route.ts',
   'src/app/api/payment/momo/route.ts',
   'src/app/api/payment/zalopay/route.ts',

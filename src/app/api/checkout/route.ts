@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { CartItem } from "@/store/useCartStore";
+import { sendMail, orderConfirmationTemplate } from "@/lib/mail";
+import { checkoutSchema } from "@/lib/validations";
 
 function generateOrderNumber(): string {
   const timestamp = Date.now().toString(36).toUpperCase();
@@ -24,18 +25,31 @@ export async function POST(request: NextRequest) {
     const session = await auth();
     let userId: string | null = session?.user?.id || null;
 
-    const body: {
-      cartItems: CartItem[];
-      couponCode?: string;
-      paymentMethod?: string;
-      guestEmail?: string;
-      guestName?: string;
-    } = await request.json();
-    const { cartItems, couponCode, paymentMethod = "BALANCE", guestEmail, guestName } = body;
-
-    if (!cartItems || cartItems.length === 0) {
-      return NextResponse.json({ error: "Giỏ hàng trống" }, { status: 400 });
+    const bodyParsed = checkoutSchema.safeParse(await request.json());
+    if (!bodyParsed.success) {
+      return NextResponse.json(
+        { error: "Dữ liệu không hợp lệ", details: bodyParsed.error.issues[0]?.message },
+        { status: 400 },
+      );
     }
+    const { cartItems: rawItems, couponCode, paymentMethod = "BALANCE", guestEmail, guestName } = bodyParsed.data;
+
+    // Fetch real prices from DB — NEVER trust client-supplied prices
+    const productIds = [...new Set(rawItems.map((i) => i.productId))];
+    const dbProducts = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, price: true, salePrice: true, bulkDiscounts: true, status: true, name: true },
+    });
+    const productMap = new Map(dbProducts.map((p) => [p.id, p]));
+
+    const cartItems = rawItems.map((item) => {
+      const dbProduct = productMap.get(item.productId);
+      if (!dbProduct) throw new Error(`Sản phẩm "${item.name}" không tồn tại`);
+      if (dbProduct.status === "HIDDEN" || dbProduct.status === "DRAFT") {
+        throw new Error(`Sản phẩm "${dbProduct.name}" đã ngừng kinh doanh, vui lòng xóa khỏi giỏ hàng.`);
+      }
+      return { ...item, price: dbProduct.price, salePrice: dbProduct.salePrice, bulkDiscounts: dbProduct.bulkDiscounts };
+    });
 
     let totalAmount = 0;
     for (const item of cartItems) {
@@ -130,7 +144,7 @@ export async function POST(request: NextRequest) {
             discountAmount,
             finalAmount,
             status: "PENDING",
-            paymentMethod: paymentMethod as "BANK_TRANSFER" | "MOMO" | "ZALOPAY" | "CRYPTO",
+            paymentMethod: paymentMethod as "BANK_TRANSFER" | "BALANCE",
             paymentStatus: "UNPAID",
             customerEmail: guestEmail || "",
             customerName: guestName || "",
@@ -215,10 +229,12 @@ async function processBalancePayment({
   discountAmount: number;
   finalAmount: number;
   appliedCouponId: string | null;
-  cartItems: CartItem[];
+  cartItems: Array<{ productId: string; name: string; price: number; salePrice: number | null; quantity: number; bulkDiscounts?: Array<{ minQty: number; discount: number }> }>;
   user: { id: string; email: string; name: string | null };
 }) {
-  return await prisma.$transaction(async (tx) => {
+  // Toàn bộ logic trong 1 $transaction atomic:
+  // Nếu bất kỳ bước nào lỗi => Rollback toàn bộ, tiền không bị trừ oan
+  const result = await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: userId },
       data: { balance: { decrement: finalAmount } },
@@ -270,15 +286,18 @@ async function processBalancePayment({
       const discountedPrice = discountPercent > 0 ? price * (1 - discountPercent / 100) : price;
       const itemTotal = Math.round(discountedPrice * cartItem.quantity * 100) / 100;
 
-      const availableKeys = await tx.productKey.findMany({
+      // Race-condition prevention: Atomic updateMany with status filter,
+      // dùng updateMany đếm số bản ghi thực sự được cập nhật
+      const keyIdsResult = await tx.productKey.findMany({
         where: { productId: cartItem.productId, status: "AVAILABLE" },
+        select: { id: true, keyValue: true },
         take: cartItem.quantity,
         orderBy: { createdAt: "asc" },
       });
 
-      if (availableKeys.length < cartItem.quantity) {
+      if (keyIdsResult.length < cartItem.quantity) {
         throw new Error(
-          `Không đủ số lượng sản phẩm "${cartItem.name}" trong kho. Còn lại: ${availableKeys.length}, Cần: ${cartItem.quantity}`,
+          `Không đủ số lượng sản phẩm "${cartItem.name}" trong kho. Còn lại: ${keyIdsResult.length}, Cần: ${cartItem.quantity}`,
         );
       }
 
@@ -292,9 +311,9 @@ async function processBalancePayment({
         },
       });
 
-      const keyIds = availableKeys.map((k) => k.id);
-      await tx.productKey.updateMany({
-        where: { id: { in: keyIds } },
+      // Atomic: chỉ update keys còn AVAILABLE, tránh double-sell
+      const updateResult = await tx.productKey.updateMany({
+        where: { id: { in: keyIdsResult.map((k) => k.id) }, status: "AVAILABLE" },
         data: {
           status: "SOLD",
           orderItemId: orderItem.id,
@@ -302,34 +321,66 @@ async function processBalancePayment({
         },
       });
 
+      // Nếu số key thực sự update được ít hơn yêu cầu => có conflict, rollback
+      if (updateResult.count < cartItem.quantity) {
+        throw new Error(
+          `Xung đột: key sản phẩm "${cartItem.name}" vừa bị người khác mua. Còn lại: ${updateResult.count}, Cần: ${cartItem.quantity}`,
+        );
+      }
+
       await tx.product.update({
         where: { id: cartItem.productId },
         data: { stock: { decrement: cartItem.quantity } },
       });
 
-      for (const key of availableKeys) {
+      for (const key of keyIdsResult) {
         soldKeys.push({
           productId: cartItem.productId,
           productName: cartItem.name,
           keyValue: key.keyValue,
         });
+        await tx.download.create({
+          data: {
+            orderId: order.id,
+            userId,
+            productKey: key.keyValue,
+            downloadUrl: null,
+            maxDownloads: 5,
+          },
+        });
       }
-    }
-
-    for (let i = 0; i < cartItems.length; i++) {
-      await tx.download.create({
-        data: {
-          orderId: order.id,
-          userId,
-          productKey: null,
-          downloadUrl: null,
-          maxDownloads: 5,
-        },
-      });
     }
 
     return { order, soldKeys };
   });
+
+  // Gửi email trong try-catch riêng: Nếu lỗi email, đơn hàng VẪN thành công
+  if (user.email) {
+    try {
+      const itemRows = cartItems.map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: ((item.salePrice ?? item.price) * item.quantity).toLocaleString("vi-VN"),
+      }));
+      sendMail({
+        to: user.email,
+        subject: `Đơn hàng ${result.order.orderNumber} - Thanh toán thành công`,
+        html: orderConfirmationTemplate({
+          userName: user.name || user.email,
+          orderNumber: result.order.orderNumber,
+          amount: finalAmount.toLocaleString("vi-VN"),
+          items: itemRows,
+          email: user.email,
+        }),
+      }).catch((err) => {
+        console.error("[Checkout] Email fallback error:", err);
+      });
+    } catch (emailErr) {
+      console.error("[Checkout] Email send failed (order still successful):", emailErr);
+    }
+  }
+
+  return result;
 }
 
 // Helper function to get payment info based on method
@@ -349,26 +400,7 @@ function getPaymentInfo(
         content: order.transactionCode || order.orderNumber,
         qrCode: "/api/qr/bank-transfer?orderId=" + order.id,
       };
-    case "MOMO":
-      return {
-        type: "momo",
-        redirectUrl: "/api/payment/momo?orderId=" + order.id,
-        message: "Đang chuyển hướng đến MoMo...",
-      };
-    case "ZALOPAY":
-      return {
-        type: "zalopay",
-        redirectUrl: "/api/payment/zalopay?orderId=" + order.id,
-        message: "Đang chuyển hướng đến ZaloPay...",
-      };
-    case "CRYPTO":
-      return {
-        type: "crypto",
-        walletAddress: "bc1q...",
-        network: "Bitcoin",
-        amount: amount,
-        message: "Vui lòng chuyển đúng số lượng BTC vào địa chỉ ví trên",
-      };
+
     default:
       return null;
   }

@@ -1,23 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { registerSchema } from "@/lib/validations";
+import { rateLimit, getRateLimitKey } from "@/lib/rate-limit";
+import { validateCaptchaToken } from "@/lib/captcha-validate";
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, name } = await request.json();
+    // Rate limiting: toi da 3 lan dang ky / phut / IP
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const rl = rateLimit({ key: getRateLimitKey(ip, "register"), maxAttempts: 3, windowMs: 60000 });
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: "Qua nhieu yeu cau dang ky. Vui long thu lai sau." },
+        { status: 429 },
+      );
+    }
 
-    if (!email || !password) {
+    // Gioi han so tai khoan toi da / IP (toi da 5 account / gio)
+    const accountRl = rateLimit({ key: getRateLimitKey(ip, "register-account"), maxAttempts: 5, windowMs: 3600000 });
+    if (!accountRl.success) {
       return NextResponse.json(
-        { error: "Email và mật khẩu là bắt buộc" },
+        { error: "IP cua ban da tao qua nhieu tai khoan. Vui long thu lai sau." },
+        { status: 429 },
+      );
+    }
+
+    const body = await request.json();
+    const parsed = registerSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message || "Du lieu khong hop le" },
         { status: 400 },
       );
     }
-    if (password.length < 6) {
+
+    const { email, password, name, captchaToken } = parsed.data;
+
+    const captchaResult = await validateCaptchaToken(captchaToken);
+    if (!captchaResult.valid) {
       return NextResponse.json(
-        { error: "Mật khẩu phải có ít nhất 6 ký tự" },
+        { error: captchaResult.error || "Xac thuc captcha that bai" },
         { status: 400 },
       );
     }
+
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });

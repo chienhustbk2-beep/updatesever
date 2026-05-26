@@ -25,7 +25,7 @@ export async function GET(
         items: {
           include: {
             product: true,
-            productKeys: true,
+            productKeys: { include: { product: true } },
           },
         },
         downloads: true,
@@ -34,7 +34,18 @@ export async function GET(
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
-    return NextResponse.json({ order });
+    const flatKeys = order.items.flatMap((item) =>
+      item.productKeys.map((k) => ({
+        id: k.id,
+        keyValue: k.keyValue,
+        status: k.status,
+        orderId: k.orderItemId,
+        note: k.note,
+        soldAt: k.soldAt,
+        product: { id: k.product.id, name: k.product.name },
+      }))
+    );
+    return NextResponse.json({ order: { ...order, productKeys: flatKeys } });
   } catch (error) {
     console.error("Get order error:", error);
     return NextResponse.json(
@@ -73,13 +84,10 @@ export async function PATCH(
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    // Check if cancellation action is requested (via action or status transition)
-    if (action === "cancel" || status === "CANCELLED") {
+    // Handle cancellation (just change status, NO auto-refund)
+    if (action === "cancel") {
       if (order.status === "CANCELLED") {
-        return NextResponse.json(
-          { error: "Order already cancelled" },
-          { status: 400 },
-        );
+        return NextResponse.json({ error: "Đơn hàng đã bị hủy" }, { status: 400 });
       }
 
       await prisma.$transaction(async (tx) => {
@@ -93,53 +101,69 @@ export async function PATCH(
           const keyIds = allKeys.map((k) => k.id);
           await tx.productKey.updateMany({
             where: { id: { in: keyIds } },
-            data: {
-              status: "COMPROMISED",
-              orderItemId: null,
-              soldAt: null,
-            },
-          });
-        }
-
-        if (order.paymentStatus === "PAID" && order.userId) {
-          await tx.user.update({
-            where: { id: order.userId },
-            data: { balance: { increment: order.finalAmount } },
-          });
-          await tx.transaction.create({
-            data: {
-              userId: order.userId,
-              type: "REFUND",
-              amount: order.finalAmount,
-              description: `Hoàn tiền đơn hàng ${order.orderNumber}`,
-              status: "SUCCESS",
-            },
-          });
-          await tx.order.update({
-            where: { id },
-            data: { paymentStatus: "REFUNDED" },
+            data: { status: "COMPROMISED", orderItemId: null, soldAt: null },
           });
         }
 
         await tx.auditLog.create({
           data: {
-            userId: admin.id,
-            action: "CANCEL_ORDER",
-            entity: "Order",
+            userId: admin.id, action: "CANCEL_ORDER", entity: "Order",
             entityId: id,
-            details: JSON.stringify({
-              previousStatus: order.status,
-              previousPaymentStatus: order.paymentStatus,
-            }),
+            details: JSON.stringify({ previousStatus: order.status }),
             ipAddress: request.headers.get("x-forwarded-for") || "unknown",
           },
         });
       });
-      return NextResponse.json({
-        success: true,
-        message:
-          "Order cancelled successfully. Keys returned to stock and balance refunded.",
+      return NextResponse.json({ success: true, message: "Đã hủy đơn hàng." });
+    }
+
+    // Handle refund (separate action, only for paid orders)
+    if (action === "refund") {
+      if (order.paymentStatus === "REFUNDED") {
+        return NextResponse.json({ error: "Đơn hàng đã được hoàn tiền" }, { status: 400 });
+      }
+      if (order.paymentStatus !== "PAID") {
+        return NextResponse.json({ error: "Đơn hàng chưa được thanh toán" }, { status: 400 });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: order.userId! },
+          data: { balance: { increment: order.finalAmount } },
+        });
+        await tx.transaction.create({
+          data: {
+            userId: order.userId!,
+            type: "REFUND",
+            amount: order.finalAmount,
+            description: `Hoàn tiền đơn hàng ${order.orderNumber}`,
+            status: "SUCCESS",
+          },
+        });
+        await tx.order.update({
+          where: { id },
+          data: { paymentStatus: "REFUNDED", status: "REFUNDED" },
+        });
+
+        const allKeys = order.items.flatMap((item) => item.productKeys);
+        if (allKeys.length > 0) {
+          const keyIds = allKeys.map((k) => k.id);
+          await tx.productKey.updateMany({
+            where: { id: { in: keyIds } },
+            data: { status: "COMPROMISED" },
+          });
+        }
+
+        await tx.auditLog.create({
+          data: {
+            userId: admin.id, action: "REFUND_ORDER", entity: "Order",
+            entityId: id,
+            details: JSON.stringify({ amount: order.finalAmount }),
+            ipAddress: request.headers.get("x-forwarded-for") || "unknown",
+          },
+        });
       });
+      return NextResponse.json({ success: true, message: "Hoàn tiền thành công!" });
     }
 
     // Validate inputs for field updates

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Upload, X, ImageIcon } from "lucide-react";
 
 interface ImageUploadProps {
@@ -8,11 +8,28 @@ interface ImageUploadProps {
   label?: string;
 }
 
+function extractUrl(value: string): string | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
+    return value;
+  } catch {
+    return value;
+  }
+}
+
 export default function ImageUpload({ value, onChange, label }: ImageUploadProps) {
   const [dragging, setDragging] = useState(false);
-  const [preview, setPreview] = useState<string | null>(value || null);
-  const [inputUrl, setInputUrl] = useState(value || "");
+  const [preview, setPreview] = useState<string | null>(() => extractUrl(value));
+  const [inputUrl, setInputUrl] = useState(() => extractUrl(value) || "");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const url = extractUrl(value);
+    setPreview(url);
+    if (!inputUrl) setInputUrl(url || "");
+  }, [value]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -28,18 +45,25 @@ export default function ImageUpload({ value, onChange, label }: ImageUploadProps
     setDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith("image/")) {
-      const url = URL.createObjectURL(file);
-      setPreview(url);
-      onChange(url);
+      uploadFile(file);
     }
   }, [onChange]);
+
+  const uploadFile = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/upload", { method: "POST", body: formData });
+    if (res.ok) {
+      const data = await res.json();
+      setPreview(data.url);
+      onChange(data.url);
+    }
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith("image/")) {
-      const url = URL.createObjectURL(file);
-      setPreview(url);
-      onChange(url);
+      uploadFile(file);
     }
   };
 
@@ -67,8 +91,10 @@ export default function ImageUpload({ value, onChange, label }: ImageUploadProps
         onDrop={handleDrop}
       >
         {preview ? (
-          <div className="relative mx-auto max-w-xs">
-            <img src={preview} alt="Preview" className="max-h-40 rounded-lg object-contain mx-auto" />
+          <div className="relative mx-auto w-full max-w-xs">
+            <div className="aspect-[4/3] overflow-hidden rounded-lg border border-divider bg-card">
+              <img src={preview} alt="Preview" className="h-full w-full object-scale-down" />
+            </div>
             <button
               type="button"
               onClick={clearImage}
@@ -115,6 +141,7 @@ export default function ImageUpload({ value, onChange, label }: ImageUploadProps
           </div>
         )}
       </div>
+      <p className="text-xs text-muted">Gợi ý: up ảnh lên <a href="https://freeimage.host/" target="_blank" className="text-[var(--primary)] underline hover:opacity-80">freeimage.host</a> → copy <strong>Direct Link</strong> → dán vào ô trên</p>
     </div>
   );
 }

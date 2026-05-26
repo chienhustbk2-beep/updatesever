@@ -142,7 +142,6 @@ const allFiles = [
   'src/app/api/checkout/route.ts',
   'src/app/api/cart/sync/route.ts',
   'src/app/api/public/ui-elements/route.ts',
-  'src/app/api/webhook/sepay/route.ts',
   'src/app/api/payment/bank-transfer/route.ts',
   'src/app/api/payment/momo/route.ts',
   'src/app/api/payment/zalopay/route.ts',

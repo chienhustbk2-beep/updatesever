@@ -1,6 +1,6 @@
 const translations: Record<string, Record<string, string>> = {
   vi: {
-    "site.name": "DigitalShop",
+    "site.name": "ChienHust Store",
     "site.desc": "Cửa hàng phần mềm và key bản quyền uy tín",
     "nav.home": "Trang chủ",
     "nav.products": "Sản phẩm",
@@ -73,7 +73,7 @@ const translations: Record<string, Record<string, string>> = {
     "contact.call": "Gọi ngay",
   },
   en: {
-    "site.name": "DigitalShop",
+    "site.name": "ChienHust Store",
     "site.desc": "Trusted software & license key store",
     "nav.home": "Home",
     "nav.products": "Products",
@@ -146,7 +146,7 @@ const translations: Record<string, Record<string, string>> = {
     "contact.call": "Call now",
   },
   zh: {
-    "site.name": "DigitalShop",
+    "site.name": "ChienHust Store",
     "site.desc": "值得信赖的软件和正版密钥商店",
     "nav.home": "首页",
     "nav.products": "产品",

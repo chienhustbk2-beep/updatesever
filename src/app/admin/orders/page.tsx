@@ -3,7 +3,7 @@ interface Order { id: string; orderNumber: string; customerName: string; custome
 interface OrderDetail extends Order { user: { id: string; name: string | null; email: string; balance: number }; productKeys: { id: string; keyValue: string; status: string; orderId: string | null; note: string | null; soldAt: string | null; product: { id: string; name: string } }[]; downloads: { id: string; productKey: string | null; downloadUrl: string | null; expiresAt: string | null; downloadCount: number; createdAt: string }[] }
 const statusLabels: Record<string, string> = { PENDING: 'Chờ xử lý', PROCESSING: 'Đang xử lý', COMPLETED: 'Hoàn thành', CANCELLED: 'Đã hủy', REFUNDED: 'Đã hoàn tiền' }
 const statusColors: Record<string, string> = { PENDING: 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20', PROCESSING: 'bg-[var(--primary)]/10 text-[var(--primary)] border-[var(--primary)]/20', COMPLETED: 'bg-success/10 text-[var(--success)] border-[var(--success)]/20', CANCELLED: 'bg-destructive/10 text-[var(--danger)] border-[var(--danger)]/20', REFUNDED: 'bg-hover text-muted border-divider' }
-const paymentMethodLabels: Record<string, string> = { BANK_TRANSFER: 'Chuyển khoản', MOMO: 'Ví MoMo', ZALOPAY: 'ZaloPay', CRYPTO: 'Tiền mã hóa', BALANCE: 'Số dư ví', MANUAL: 'Thủ công' }
+const paymentMethodLabels: Record<string, string> = { BANK_TRANSFER: 'Chuyển khoản', BALANCE: 'Số dư ví', MANUAL: 'Thủ công' }
 
 function OrderDetailModal({ order, onClose, onUpdateStatus, onRefresh }: { order: OrderDetail; onClose: () => void; onUpdateStatus: (orderId: string, status: string) => void; onRefresh: () => void }) {
   const [newStatus, setNewStatus] = useState(order.status);
@@ -75,6 +75,8 @@ export default function AdminOrdersPage() {
   const fetchOrderDetail = async (orderId: string) => { try { const res = await fetch(`/api/admin/orders/${orderId}`);const data = await res.json();if (res.ok) { setSelectedOrder(data.order);setShowDetail(true) } } catch (err) { console.error('Failed to fetch order detail:', err) } };
 
   const handleUpdateStatus = async (orderId: string, newStatus: string) => { try { const res = await fetch(`/api/admin/orders/${orderId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) });const data = await res.json();if (res.ok) { setMessage({ type: 'success', text: 'Cập nhật trạng thái thành công!' });fetchOrders();if (selectedOrder?.id === orderId) { fetchOrderDetail(orderId) } } else { setMessage({ type: 'error', text: data.error }) } } catch { setMessage({ type: 'error', text: 'Có lỗi xảy ra' }) };setTimeout(() => setMessage(null), 3000) };
+  const handleCancelOrder = async (orderId: string) => { try { const res = await fetch(`/api/admin/orders/${orderId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'cancel' }) });const data = await res.json();if (res.ok) { setMessage({ type: 'success', text: data.message });fetchOrders() } else { setMessage({ type: 'error', text: data.error }) } } catch { setMessage({ type: 'error', text: 'Có lỗi xảy ra' }) };setTimeout(() => setMessage(null), 3000) };
+  const handleRefund = async (orderId: string) => { if (!window.confirm('Xác nhận hoàn tiền cho đơn hàng này?')) return; try { const res = await fetch(`/api/admin/orders/${orderId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'refund' }) });const data = await res.json();if (res.ok) { setMessage({ type: 'success', text: data.message });fetchOrders();if (selectedOrder?.id === orderId) { fetchOrderDetail(orderId) } } else { setMessage({ type: 'error', text: data.error }) } } catch { setMessage({ type: 'error', text: 'Có lỗi xảy ra' }) };setTimeout(() => setMessage(null), 3000) };
 
   const filteredOrders = orders.filter((o) => { if (search) { const s = search.toLowerCase();if (!o.orderNumber.toLowerCase().includes(s) && !o.customerName.toLowerCase().includes(s) && !o.customerEmail.toLowerCase().includes(s)) { return false } } if (statusFilter && o.status !== statusFilter) return false;if (paymentFilter && o.paymentMethod !== paymentFilter) return false;return true });
 
@@ -136,7 +138,15 @@ export default function AdminOrdersPage() {
                     <td className="px-4 py-3"><span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${statusColors[o.status]}`}>{statusLabels[o.status] || o.status}</span></td>
                     <td className="px-4 py-3"><span className="text-xs text-muted">{new Date(o.createdAt).toLocaleDateString('vi-VN')}</span></td>
                     <td className="px-4 py-3 text-right">
-                      <button onClick={() => fetchOrderDetail(o.id)} className="rounded-lg bg-[var(--primary)]/10 p-2 text-[var(--primary)] hover:bg-[var(--primary)]/20 transition"><Eye className="h-4 w-4" /></button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => fetchOrderDetail(o.id)} className="rounded-lg bg-[var(--primary)]/10 p-2 text-[var(--primary)] hover:bg-[var(--primary)]/20 transition" title="Xem chi tiết"><Eye className="h-4 w-4" /></button>
+                        {o.paymentStatus === 'PAID' && o.status !== 'REFUNDED' && (
+                          <button onClick={() => handleRefund(o.id)} className="rounded-lg bg-[var(--success)]/10 p-2 text-[var(--success)] hover:bg-[var(--success)]/20 transition" title="Hoàn tiền"><DollarSign className="h-4 w-4" /></button>
+                        )}
+                        {(o.status === 'PENDING' || o.status === 'PROCESSING') && (
+                          <button onClick={() => { if (window.confirm(`Hủy đơn hàng ${o.orderNumber}?`)) { handleCancelOrder(o.id) } }} className="rounded-lg bg-[var(--danger)]/10 p-2 text-[var(--danger)] hover:bg-[var(--danger)]/20 transition" title="Hủy đơn"><X className="h-4 w-4" /></button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

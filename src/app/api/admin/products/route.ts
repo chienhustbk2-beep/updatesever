@@ -14,6 +14,9 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
     const products = await prisma.product.findMany({
+      where: {
+        NOT: { slug: { startsWith: "deleted-" } },
+      },
       orderBy: { createdAt: "desc" },
       include: {
         category: { select: { name: true } },
@@ -56,6 +59,7 @@ export async function GET() {
       type: p.type,
       categoryId: p.categoryId,
       categoryName: p.category?.name || null,
+      images: p.images,
       keyCount: p._count.productKeys,
       availableKeys: availableMap.get(p.id) ?? 0,
       soldKeys: soldMap.get(p.id) ?? 0,
@@ -118,7 +122,7 @@ export async function POST(request: NextRequest) {
         type: type || "SOFTWARE_KEY",
         status: status || "ACTIVE",
         categoryId: categoryId || null,
-        images: images || "",
+        images: images ? (images.startsWith('[') ? images : JSON.stringify([images])) : "",
         bulkDiscounts:
           bulkDiscounts && bulkDiscounts.length > 0
             ? {

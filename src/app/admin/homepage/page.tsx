@@ -1,9 +1,11 @@
-'use client';import { useState, useEffect, startTransition } from 'react';import { Save, Loader2, Home, Truck, Globe, Star, Image as ImageIcon } from 'lucide-react';import ToggleSwitch from '@/components/ui/ToggleSwitch';
+'use client';import { useState, useEffect, startTransition } from 'react';import { Save, Loader2, Home, Truck, Globe, Star, Image as ImageIcon, Bell, Megaphone } from 'lucide-react';import ToggleSwitch from '@/components/ui/ToggleSwitch';import RichEditor from '@/components/ui/RichEditor';
 
 const TABS = [
   { id: 'cta', label: 'CTA', icon: Home },
   { id: 'trust', label: 'Thống kê', icon: Star },
   { id: 'hero', label: 'Banner', icon: ImageIcon },
+  { id: 'notification', label: 'Thông báo', icon: Bell },
+  { id: 'promo', label: 'Popup KM', icon: Megaphone },
 ];
 
 const DEFAULT_CTA_KEYS = [
@@ -31,6 +33,8 @@ export default function AdminHomepagePage() {
   const [heroEnabled, setHeroEnabled] = useState(true);
   const [trustEnabled, setTrustEnabled] = useState(true);
   const [ctaEnabled, setCtaEnabled] = useState(true);
+  const [notificationEnabled, setNotificationEnabled] = useState(true);
+  const [promoEnabled, setPromoEnabled] = useState(true);
 
   const fetchSettings = async () => {
     try {
@@ -41,6 +45,8 @@ export default function AdminHomepagePage() {
         setHeroEnabled(data.settings?.homepage_hero_enabled !== 'false');
         setTrustEnabled(data.settings?.homepage_trust_enabled !== 'false');
         setCtaEnabled(data.settings?.homepage_cta_enabled !== 'false');
+        setNotificationEnabled(data.settings?.homepage_notification_enabled !== 'false');
+        setPromoEnabled(data.settings?.homepage_promo_enabled !== 'false');
         try { const s = JSON.parse(data.settings?.hero_banner_slides || '[]'); if (Array.isArray(s)) setHeroSlides(s); } catch {}
       }
     } catch (err) { console.error('Failed to fetch settings:', err); }
@@ -62,6 +68,8 @@ export default function AdminHomepagePage() {
             homepage_hero_enabled: String(heroEnabled),
             homepage_trust_enabled: String(trustEnabled),
             homepage_cta_enabled: String(ctaEnabled),
+            homepage_notification_enabled: String(notificationEnabled),
+            homepage_promo_enabled: String(promoEnabled),
           }
         }),
       });
@@ -117,7 +125,74 @@ export default function AdminHomepagePage() {
               <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--warning)]/10"><ImageIcon className="h-5 w-5 text-[var(--warning)]" /></div><div><h2 className="text-lg font-bold text-main">Slider Banner (Hero)</h2><p className="text-xs text-muted">Quản lý các slide hiển thị trên banner trang chủ</p></div></div>
               <ToggleSwitch checked={heroEnabled} onChange={setHeroEnabled} />
             </div>
-            {heroEnabled && <div className="space-y-4">{heroSlides.map((slide, idx) => (<div key={idx} className="rounded-xl border border-divider bg-main p-4"><div className="flex items-center justify-between mb-3"><h3 className="text-sm font-semibold text-main">Slide #{idx + 1}</h3><button onClick={() => removeHeroSlide(idx)} className="text-xs text-[var(--danger)] hover:text-[var(--danger)]/80 transition">Xóa slide</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-3"><div><label className="block text-xs text-muted mb-1">Tiêu đề</label><input value={slide.title} onChange={e => updateHeroSlide(idx, 'title', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div><label className="block text-xs text-muted mb-1">Phụ đề</label><input value={slide.subtitle} onChange={e => updateHeroSlide(idx, 'subtitle', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div className="md:col-span-2"><label className="block text-xs text-muted mb-1">Mô tả</label><textarea value={slide.description} onChange={e => updateHeroSlide(idx, 'description', e.target.value)} rows={2} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div><label className="block text-xs text-muted mb-1">Giá</label><input value={slide.price} onChange={e => updateHeroSlide(idx, 'price', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div><label className="block text-xs text-muted mb-1">Giá gốc</label><input value={slide.originalPrice} onChange={e => updateHeroSlide(idx, 'originalPrice', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div><label className="block text-xs text-muted mb-1">Badge (VD: -70%)</label><input value={slide.badge} onChange={e => updateHeroSlide(idx, 'badge', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div><label className="block text-xs text-muted mb-1">Slug sản phẩm</label><input value={slide.slug} onChange={e => updateHeroSlide(idx, 'slug', e.target.value)} placeholder="ten-san-pham" className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div><label className="block text-xs text-muted mb-1">Màu gradient</label><input value={slide.gradient} onChange={e => updateHeroSlide(idx, 'gradient', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main font-mono text-xs" /></div><div><label className="block text-xs text-muted mb-1">URL ảnh</label><input value={slide.image} onChange={e => updateHeroSlide(idx, 'image', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main font-mono text-xs" /></div></div></div>))}<button onClick={addHeroSlide} className="w-full rounded-lg border-2 border-dashed border-divider py-3 text-sm text-muted hover:text-main hover:border-[var(--primary)]/40 transition">+ Thêm slide mới</button></div>}
+            {heroEnabled && <div className="space-y-4">{heroSlides.map((slide, idx) => (<div key={idx} className="rounded-xl border border-divider bg-main p-4"><div className="flex items-center justify-between mb-3"><h3 className="text-sm font-semibold text-main">Slide #{idx + 1}</h3><button onClick={() => removeHeroSlide(idx)} className="text-xs text-[var(--danger)] hover:text-[var(--danger)]/80 transition">Xóa slide</button></div><div className="grid grid-cols-1 md:grid-cols-2 gap-3"><div><label className="block text-xs text-muted mb-1">Tiêu đề</label><input value={slide.title} onChange={e => updateHeroSlide(idx, 'title', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div><label className="block text-xs text-muted mb-1">Phụ đề</label><input value={slide.subtitle} onChange={e => updateHeroSlide(idx, 'subtitle', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div className="md:col-span-2"><label className="block text-xs text-muted mb-1">Mô tả</label><textarea value={slide.description} onChange={e => updateHeroSlide(idx, 'description', e.target.value)} rows={2} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div><label className="block text-xs text-muted mb-1">Giá</label><input value={slide.price} onChange={e => updateHeroSlide(idx, 'price', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div><label className="block text-xs text-muted mb-1">Giá gốc</label><input value={slide.originalPrice} onChange={e => updateHeroSlide(idx, 'originalPrice', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div><label className="block text-xs text-muted mb-1">Badge (VD: -70%)</label><input value={slide.badge} onChange={e => updateHeroSlide(idx, 'badge', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" placeholder="Giảm 70%" /></div><div className="md:col-span-2"><label className="block text-xs text-muted mb-1">Slug sản phẩm</label><input value={slide.slug} onChange={e => updateHeroSlide(idx, 'slug', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" placeholder="my-product-slug" /></div><div className="md:col-span-2"><label className="block text-xs text-muted mb-1">Gradient nền</label><input value={slide.gradient || 'from-[var(--accent-color)] via-[var(--accent-color)] to-[var(--bg-primary)]'} onChange={e => updateHeroSlide(idx, 'gradient', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" /></div><div className="md:col-span-2"><label className="block text-xs text-muted mb-1">URL hình ảnh</label><input value={slide.image || ''} onChange={e => updateHeroSlide(idx, 'image', e.target.value)} className="w-full rounded-lg bg-card border border-divider px-3 py-2 text-sm text-main" placeholder="https://example.com/image.jpg" /></div></div></div>))}</div>}
+            <button onClick={addHeroSlide} className="mt-4 w-full rounded-xl border-2 border-dashed border-divider py-3 text-sm font-medium text-muted transition hover:border-[var(--primary)]/40 hover:text-[var(--primary)]">+ Thêm slide mới</button>
+          </>
+        );
+      case 'notification':
+        return (
+          <>
+            <div className="mb-6 flex items-center justify-between">
+              <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary)]/10"><Bell className="h-5 w-5 text-[var(--primary)]" /></div><div><h2 className="text-lg font-bold text-main">Thanh Thông báo</h2><p className="text-xs text-muted">Thanh ticker chạy dưới banner trang chủ</p></div></div>
+              <ToggleSwitch checked={notificationEnabled} onChange={setNotificationEnabled} />
+            </div>
+            {notificationEnabled && <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-muted mb-1">Nội dung (soạn thảo văn bản)</label>
+                <RichEditor value={settings['homepage_notification_content'] || ''} onChange={(v) => updateField('homepage_notification_content', v)} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted mb-1">Hiệu ứng xuất hiện</label>
+                <select value={settings['homepage_notification_animation'] || 'marquee'} onChange={(e) => updateField('homepage_notification_animation', e.target.value)} className="w-full rounded-lg bg-main border border-divider px-3 py-2 text-sm text-main focus:border-[var(--primary)] focus:outline-none">
+                  <option value="marquee">Marquee (Chạy chữ từ phải sang trái)</option>
+                  <option value="fadeIn">Fade In (Hiện dần)</option>
+                  <option value="slideDown">Slide Down (Trượt xuống)</option>
+                  <option value="pulse">Pulse (Nhấp nháy)</option>
+                </select>
+              </div>
+            </div>}
+          </>
+        );
+      case 'promo':
+        return (
+          <>
+            <div className="mb-6 flex items-center justify-between">
+              <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary)]/10"><Megaphone className="h-5 w-5 text-[var(--primary)]" /></div><div><h2 className="text-lg font-bold text-main">Popup Khuyến Mãi</h2><p className="text-xs text-muted">Popup hiện giữa màn hình khi load trang chủ</p></div></div>
+              <ToggleSwitch checked={promoEnabled} onChange={setPromoEnabled} />
+            </div>
+            {promoEnabled && <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-muted mb-1">Tiêu đề Popup</label>
+                  <input value={settings['homepage_promo_title'] || ''} onChange={(e) => updateField('homepage_promo_title', e.target.value)} placeholder="Khuyến Mãi Đặc Biệt" className="w-full rounded-lg bg-main border border-divider px-3 py-2 text-sm text-main placeholder-muted focus:border-[var(--primary)] focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted mb-1">Màu tiêu đề</label>
+                  <div className="flex gap-2">
+                    <input type="color" value={settings['homepage_promo_title_color'] || '#ffffff'} onChange={(e) => updateField('homepage_promo_title_color', e.target.value)} className="h-10 w-10 rounded cursor-pointer" />
+                    <input value={settings['homepage_promo_title_color'] || '#ffffff'} onChange={(e) => updateField('homepage_promo_title_color', e.target.value)} placeholder="#ffffff" className="flex-1 rounded-lg bg-main border border-divider px-3 py-2 text-sm text-main placeholder-muted focus:border-[var(--primary)] focus:outline-none" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted mb-1">Màu gradient (bắt đầu)</label>
+                  <div className="flex gap-2">
+                    <input type="color" value={settings['homepage_promo_gradient_from'] || '#3b82f6'} onChange={(e) => updateField('homepage_promo_gradient_from', e.target.value)} className="h-10 w-10 rounded cursor-pointer" />
+                    <input value={settings['homepage_promo_gradient_from'] || '#3b82f6'} onChange={(e) => updateField('homepage_promo_gradient_from', e.target.value)} placeholder="#3b82f6" className="flex-1 rounded-lg bg-main border border-divider px-3 py-2 text-sm text-main placeholder-muted focus:border-[var(--primary)] focus:outline-none" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted mb-1">Màu gradient (kết thúc)</label>
+                  <div className="flex gap-2">
+                    <input type="color" value={settings['homepage_promo_gradient_to'] || '#8b5cf6'} onChange={(e) => updateField('homepage_promo_gradient_to', e.target.value)} className="h-10 w-10 rounded cursor-pointer" />
+                    <input value={settings['homepage_promo_gradient_to'] || '#8b5cf6'} onChange={(e) => updateField('homepage_promo_gradient_to', e.target.value)} placeholder="#8b5cf6" className="flex-1 rounded-lg bg-main border border-divider px-3 py-2 text-sm text-main placeholder-muted focus:border-[var(--primary)] focus:outline-none" />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted mb-1">Nội dung Popup (soạn thảo văn bản)</label>
+                <RichEditor value={settings['homepage_promo_content'] || ''} onChange={(v) => updateField('homepage_promo_content', v)} />
+              </div>
+            </div>}
           </>
         );
     }

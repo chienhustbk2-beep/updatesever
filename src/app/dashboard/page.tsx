@@ -47,6 +47,7 @@ import { useCartStore } from "@/store/useCartStore";
 import OrderItemsList, {
   OrderItemDisplay,
 } from "@/components/ui/OrderItemsList";
+import DepositHistoryTable from "@/components/ui/DepositHistoryTable";
 interface Order {
   id: string;
   orderNumber: string;
@@ -1094,7 +1095,8 @@ export default function DashboardPage() {
             </Link>{" "}
           </div>{" "}
         </div>
-      )}{" "}
+      )}
+      <DepositHistoryTable />{" "}
       {/* Tab Content: Orders */}{" "}
       {dashboardTab === "orders" && (
         <div>

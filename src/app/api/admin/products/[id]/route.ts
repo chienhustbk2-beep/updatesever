@@ -146,7 +146,7 @@ export async function PATCH(
     if (body.sku !== undefined) updateData.sku = body.sku || null;
     if (body.type !== undefined) updateData.type = body.type;
     if (body.status !== undefined) updateData.status = body.status;
-    if (body.images !== undefined) updateData.images = body.images;
+    if (body.images !== undefined) updateData.images = body.images.startsWith('[') ? body.images : JSON.stringify([body.images]);
     if (body.categoryId !== undefined)
       updateData.categoryId = body.categoryId || null;
 
@@ -183,24 +183,61 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
     const { id } = await params;
+    const { searchParams } = new URL(request.url);
+    const isConfirmed = searchParams.get("confirmed") === "true";
 
     const product = await prisma.product.findUnique({
       where: { id },
-      include: { productKeys: true },
+      select: {
+        id: true,
+        name: true,
+        stock: true,
+        type: true,
+        _count: { select: { productKeys: true } },
+      },
     });
     if (!product) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
-    const hasSoldKeys = product.productKeys.some((k) => k.status === "SOLD");
-    if (hasSoldKeys) {
-      return NextResponse.json(
-        { error: "Cannot delete product with sold keys" },
-        { status: 400 },
-      );
+
+    const availableKeyCount = await prisma.productKey.count({
+      where: { productId: id, status: "AVAILABLE" },
+    });
+
+    const isKeyBased = product.type === "SOFTWARE_KEY" || product.type === "LICENSE_KEY" || product.type === "SUBSCRIPTION";
+
+    if ((isKeyBased ? availableKeyCount : product.stock) > 0 && !isConfirmed) {
+      const detail = isKeyBased
+        ? `còn ${availableKeyCount} key chưa bán`
+        : `tồn kho còn ${product.stock}`;
+      return NextResponse.json({
+        confirmRequired: true,
+        availableKeys: availableKeyCount,
+        totalKeys: product._count.productKeys,
+        stock: product.stock,
+        type: product.type,
+        message: `Sản phẩm "${product.name}" ${detail}. Xoá sẽ mất toàn bộ dữ liệu tồn kho. Bạn có chắc chắn muốn xoá?`,
+      });
     }
 
     await prisma.productKey.deleteMany({ where: { productId: id } });
-    await prisma.product.delete({ where: { id } });
+    await prisma.bulkDiscount.deleteMany({ where: { productId: id } });
+    await prisma.product.update({
+      where: { id },
+      data: {
+        name: "[Đã xóa]",
+        slug: `deleted-${id}`,
+        description: null,
+        shortDesc: null,
+        guide: null,
+        price: 0,
+        salePrice: null,
+        stock: 0,
+        sku: null,
+        images: "",
+        status: "HIDDEN",
+      },
+    });
 
     await prisma.auditLog.create({
       data: {

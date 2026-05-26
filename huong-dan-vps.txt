@@ -1,0 +1,87 @@
+╔══════════════════════════════════════════════════════╗
+║          HƯỚNG DẪN CÀI ĐẶT VPS LẦN ĐẦU              ║
+╚══════════════════════════════════════════════════════╝
+
+I. CẤU TRÚC DỰ ÁN (thư mục bạn đang code)
+──────────────────────────────────────────
+
+src/              → Code chính (React + Next.js)
+prisma/           → Cấu trúc database (schema + migrations)
+public/           → Hình ảnh, favicon, file tĩnh
+.next/            → Code đã build sẵn (quan trọng)
+node_modules/     → Thư viện (tự sinh, KHÔNG cần copy)
+.env              → Cấu hình riêng từng VPS
+package.json      → Danh sách thư viện
+
+
+II. LẦN ĐẦU: UPLOAD LÊN GITHUB
+──────────────────────────────────────────
+
+Tạo 1 repo GitHub (VD: updatesever).
+Copy các file sau vào repo:
+
+  [FOLDER]  src/              → bỏ qua node_modules, .next
+  [FOLDER]  prisma/           → chỉ lấy schema, bỏ file .db
+  [FOLDER]  public/           → bỏ qua uploads/
+  [FOLDER]  .next/            → build xong mới copy (quan trọng!)
+  [FILE]    package.json
+  [FILE]    package-lock.json
+  [FILE]    next.config.ts
+  [FILE]    tsconfig.json
+  [FILE]    tailwind.config.ts
+  [FILE]    postcss.config.mjs
+  [FILE]    middleware.ts
+  [FILE]    setup-vps.sh
+
+KHÔNG copy: node_modules/, .env*, *.db, uploads/, fix-*.js
+
+
+III. LẦN ĐẦU: CÀI TRÊN VPS
+──────────────────────────────────────────
+
+Trên VPS mới, chạy lệnh:
+
+  bash setup-vps.sh
+
+Script này sẽ tự động:
+  1. npm install          → cài thư viện
+  2. Tạo file .env mẫu    → bạn tự sửa sau
+  3. npx prisma generate  → tạo Prisma client
+  4. npx prisma db push   → tạo database
+  5. npx prisma db seed   → thêm dữ liệu mẫu
+  6. npm run build        → build lại (nếu cần)
+  7. pm2 start            → chạy web
+
+
+IV. SAU NÀY: CẬP NHẬT KHI CÓ CODE MỚI
+──────────────────────────────────────────
+
+1. Trên máy bạn, code xong thì chạy:
+     npm run build
+
+2. Nén các file sau thành update.zip:
+   - Thư mục src/
+   - Thư mục .next/
+   - File package.json (nếu có thay đổi)
+   - File package-lock.json (nếu có thay đổi)
+   - File prisma/schema.prisma (nếu có thay đổi)
+
+3. Upload update.zip lên GitHub (đè file cũ, cùng URL)
+   Sửa version.txt nếu cần
+
+4. Trên VPS khách:
+   - Admin → Cập nhật → bấm "Kiểm tra phiên bản"
+   - Nếu có bản mới → bấm "Cập nhật ngay"
+   - Server tự tải, giải nén, npm install, restart
+
+
+V. LƯU Ý BẢO MẬT
+──────────────────────────────────────────
+
+- .env chứa token, KHÔNG bao giờ commit lên GitHub
+- Token GitHub PAT chỉ cấp quyền đọc 1 repo duy nhất
+- Nếu lộ token, vô hiệu nó trên GitHub và tạo cái mới
+- API trả về URL đã che token (vd: ghp_xxxx...xxxx)
+
+
+═══════════════════════════════════════════════════════

@@ -14,6 +14,8 @@ async function main() {
   await prisma.order.deleteMany()
   await prisma.review.deleteMany()
   await prisma.transaction.deleteMany()
+  await prisma.userCoupon.deleteMany()
+  await prisma.auditLog.deleteMany()
   await prisma.coupon.deleteMany()
   await prisma.product.deleteMany()
   await prisma.category.deleteMany()
@@ -300,7 +302,7 @@ async function main() {
       discountAmount: 0,
       finalAmount: 890000,
       status: 'CANCELLED',
-      paymentMethod: 'MOMO',
+      paymentMethod: 'BANK_TRANSFER',
       paymentStatus: 'FAILED',
       customerEmail: user1.email,
       customerName: user1.name || '',

@@ -1,20 +1,24 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import ProductActions from "@/components/ui/ProductActions";
 import TabsSection from "@/components/ui/ProductTabs";
 import { Shield, Zap, CheckCircle, Star } from "lucide-react";
 
 interface ProductDetailPageProps { params: Promise<{ slug: string }> };async function getProduct(slug: string) {
-  return await prisma.product.findUnique({
+  const product = await prisma.product.findUnique({
     where: { slug },
     include: {
       category: true,
       reviews: { include: { user: { select: { name: true } } } },
       bulkDiscounts: true,
     },
-  })}
+  });
+  if (!product) return null;
+  const availableKeyCount = await prisma.productKey.count({
+    where: { productId: product.id, status: "AVAILABLE" },
+  });
+  return { ...product, stock: availableKeyCount };}
 export default async function ProductDetailPage({
   params,
 }: ProductDetailPageProps) {
@@ -75,12 +79,10 @@ const imageUrl = getImageUrl(product.images);
         {/* Left: Image */}
         <div className="relative aspect-video overflow-hidden rounded-xl bg-[var(--bg-card-alt)] card-gradient">
           {imageUrl ? (
-            <Image
+            <img
               src={imageUrl}
               alt={product.name}
-              fill
-              className="object-cover"
-              priority
+              className="h-full w-full object-scale-down"
             />
           ) : (
             <div className="flex h-full items-center justify-center text-muted">

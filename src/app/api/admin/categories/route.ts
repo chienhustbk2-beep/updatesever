@@ -11,9 +11,19 @@ export async function GET() {
   try {
     const categories = await prisma.category.findMany({
       orderBy: { name: "asc" },
-      include: { _count: { select: { products: true } } },
     });
-    return NextResponse.json({ categories });
+    const categoryIds = categories.map((c) => c.id);
+    const productCounts = await prisma.product.groupBy({
+      by: ["categoryId"],
+      _count: { id: true },
+      where: { categoryId: { in: categoryIds }, NOT: { slug: { startsWith: "deleted-" } } },
+    });
+    const countMap = new Map(productCounts.map((g) => [g.categoryId, g._count.id]));
+    const categoriesWithCounts = categories.map((c) => ({
+      ...c,
+      _count: { products: countMap.get(c.id) ?? 0 },
+    }));
+    return NextResponse.json({ categories: categoriesWithCounts });
   } catch (error) {
     console.error("Get categories error:", error);
     return NextResponse.json(

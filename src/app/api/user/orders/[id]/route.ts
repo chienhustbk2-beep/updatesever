@@ -2,6 +2,62 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { id } = await params;
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            product: true,
+            productKeys: true,
+          },
+        },
+      },
+    });
+    if (!order) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+    if (order.userId !== session.user.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+    const showKeys = order.paymentStatus !== "REFUNDED" && order.status !== "CANCELLED";
+    const keys = showKeys ? order.items.flatMap((item) =>
+      item.productKeys.map((k) => ({
+        productName: item.product?.name,
+        keyValue: k.keyValue,
+      }))
+    ) : [];
+    return NextResponse.json({
+      order: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        totalAmount: order.totalAmount,
+        finalAmount: order.finalAmount,
+        createdAt: order.createdAt,
+      },
+      keys: keys.length > 0 ? keys : undefined,
+      message: !showKeys ? "Đơn hàng đã được hoàn tiền/hủy, key không khả dụng." : undefined,
+    });
+  } catch (error) {
+    console.error("Get order error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -148,10 +204,10 @@ export async function PATCH(
           { status: 404 },
         );
       }
-      const newQty = parseInt(body.quantity);
-      if (newQty < 1) {
+      const newQty = Number(body.quantity);
+      if (!Number.isInteger(newQty) || newQty < 1) {
         return NextResponse.json(
-          { error: "Số lượng phải lớn hơn 0" },
+          { error: "Số lượng phải là số nguyên dương" },
           { status: 400 },
         );
       }
